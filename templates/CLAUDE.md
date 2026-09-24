@@ -18,18 +18,20 @@ ask Jev one atomic typed question instead of reasoning about it yourself.
 Jev only answers — it never authorizes or executes anything; you (via the
 wrapper script) still enforce the final decision:
 
-- Model routing: `templates/scripts/jev-route.sh "<subtask description>"` —
-  a `choice` question over {opus-self, ojc-boilerplate-executor, ojc-quick-helper}.
-  Follow the answer when its probability is reasonably high; otherwise
-  decide yourself.
+- Model routing: `~/.claude/scripts/ojc/jev-route.sh "<subtask description>"`
+  (or `jev-route.ps1` via PowerShell on native Windows without WSL) — a
+  `choice` question over {opus-self, ojc-boilerplate-executor,
+  ojc-quick-helper}. Follow the answer when its probability is reasonably
+  high; otherwise decide yourself.
 - Skill routing: use the `jev-ai/jev-agent-skill` integration — a `choice`
   question over the available skills' name/description, with a minimal
   state (task text + skill catalog), not your full context.
 - Tool-call gating for anything risky (`Bash`, `Write` outside the obvious
-  scope, external calls): run `templates/scripts/jev-gate.sh` first
-  (score + noul in one call), then still apply the deterministic
-  allowlist/permission check before executing — never treat a confident
-  Jev answer alone as authorization for a destructive or external action.
+  scope, external calls): run `~/.claude/scripts/ojc/jev-gate.sh` (or
+  `jev-gate.ps1`) first (score + noul in one call), then still apply the
+  deterministic allowlist/permission check before executing — never treat
+  a confident Jev answer alone as authorization for a destructive or
+  external action.
 
 Routing targets:
 - `opus-self` → do it yourself (architecture, complex/ambiguous debugging,

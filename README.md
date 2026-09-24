@@ -65,7 +65,7 @@ flowchart TD
 | `ojc-boilerplate-executor` | Sonnet | сабагент, `~/.claude/agents/` | Шаблонный код, тесты, форматирование, механические правки + рутинная возня с инструментами (прогон тестов/линтера/сборки, поиск по коду) — возвращает Opus только отфильтрованный вывод, не сырые логи |
 | `ojc-quick-helper` (опционально) | Haiku | сабагент, `~/.claude/agents/` | Тривиальные дешёвые задачи: поиск по коду, короткие однострочные правки, суммаризация |
 | Codex | внешний движок OpenAI, плагин `codex` для Claude Code | `/codex:review`, `/codex:adversarial-review` | **Только ревью** готовых изменений Opus — независимый взгляд, поиск багов/уязвимостей/упущений. Не пишет код, не равноправный соисполнитель |
-| Jev | `jev-latest` — API `thejevai.com` (System One, typed decision model) | skill `jev-ai/jev-agent-skill` (`npx skills add`) + скрипты `templates/scripts/jev-route.sh`, `templates/scripts/jev-gate.sh` | Отвечает на узкие типизированные вопросы о текущем состоянии — не выполняет действия и не авторизует их сам |
+| Jev | `jev-latest` — API `thejevai.com` (System One, typed decision model) | skill `jev-ai/jev-agent-skill` (`npx skills add`) + скрипты `~/.claude/scripts/ojc/jev-route.*`, `~/.claude/scripts/ojc/jev-gate.*` (устанавливаются глобально, исходники в `templates/scripts/` этого репозитория) | Отвечает на узкие типизированные вопросы о текущем состоянии — не выполняет действия и не авторизует их сам |
 
 > **Разделение ролей — ключевой принцип Jev.** LLM (Opus/Sonnet/Haiku) планирует, пишет код, рассуждает. Jev **не генерирует текст** — он отвечает на atomic typed-вопросы трёх видов:
 > - `choice` — выбор одного варианта из заданного набора (роутинг: opus-self / ojc-boilerplate-executor / ojc-quick-helper; proceed / confirm / reject);
@@ -165,6 +165,23 @@ codex login
 
 Jev — не LLM в привычном смысле. Он не пишет текст и не выполняет действия — он отвечает на узкие типизированные вопросы о переданном ему `state`. Решает и исполняет действие всегда **код-обвязка** (скрипт/хук в Claude Code), а не сам Jev — агент может через Jev *предложить* маршрут или оценку риска, но не имеет права сам себе это разрешить. Это и есть источник экономии токенов: вместо того чтобы дорогая модель рассуждала над routing/triage/gating прозой, атомарный typed-вопрос к Jev даёт структурированный ответ за ~100–1500 мс и на порядки дешевле обычного LLM-вызова.
 
+**Куда класть скрипты — глобально, по тому же принципу, что и сабагенты (раздел 4.2).** `CLAUDE.md` копируется в корень **любого** вашего проекта и должен работать одинаково везде — значит, скрипты не могут вызываться по пути, привязанному к конкретному клону этого репозитория (`templates/scripts/...`). Ставим их один раз в фиксированную папку на машине:
+
+```bash
+# Linux / macOS / WSL / Git Bash
+mkdir -p ~/.claude/scripts/ojc
+cp templates/scripts/jev-route.sh templates/scripts/jev-gate.sh ~/.claude/scripts/ojc/
+chmod +x ~/.claude/scripts/ojc/*.sh
+```
+
+```powershell
+# Windows нативно (PowerShell, без WSL)
+New-Item -ItemType Directory -Force -Path "$HOME\.claude\scripts\ojc" | Out-Null
+Copy-Item templates\scripts\jev-route.ps1, templates\scripts\jev-gate.ps1 "$HOME\.claude\scripts\ojc\"
+```
+
+`templates/scripts/` в этом репозитории — источник, откуда копировать (в том числе при обновлениях через `git pull`: скопируйте файлы заново поверх старых). Везде дальше в этом README и в `templates/CLAUDE.md` скрипты вызываются по глобальному пути `~/.claude/scripts/ojc/...` — именно так их и должен вызывать Opus из любого проекта.
+
 **Ключ доступа:**
 
 ```bash
@@ -210,14 +227,14 @@ Content-Type: application/json
 
 Точные имена полей ответа (вероятности, формат `choice`/`score`/`noul`) сверяйте с https://thejevai.com/docs — ниже приведена иллюстративная структура запроса/ответа по описанию из статьи, а не гарантированно дословная схема.
 
-> **Альтернативный доступ через OpenRouter-ключ** (без отдельного аккаунта на thejevai.com) — см. подробно раздел 11.5. Коротко: все скрипты в `templates/scripts/` уже поддерживают переключение `JEV_PROVIDER=openrouter` + `OPENROUTER_API_KEY=...` вместо `JEV_API_KEY`.
+> **Альтернативный доступ через OpenRouter-ключ** (без отдельного аккаунта на thejevai.com) — см. подробно раздел 11.5. Коротко: скрипты уже поддерживают переключение `JEV_PROVIDER=openrouter` + `OPENROUTER_API_KEY=...` вместо `JEV_API_KEY`.
 
 **4.4.3 Маршрутизация моделей — `jev-route.sh`**
 
-`templates/scripts/jev-route.sh` — атомарный `choice`-вопрос "кто исполняет подзадачу":
+`~/.claude/scripts/ojc/jev-route.sh` (после установки по шагам выше) — атомарный `choice`-вопрос "кто исполняет подзадачу":
 
 ```bash
-./templates/scripts/jev-route.sh "rename a variable in utils.ts"
+~/.claude/scripts/ojc/jev-route.sh "rename a variable in utils.ts"
 # → {"answers":{"route":{"choice":"ojc-boilerplate-executor","probability":0.94}}}
 ```
 
@@ -230,7 +247,7 @@ Content-Type: application/json
 Для потенциально рискованных вызовов (`Bash`, `Write` в чувствительных путях, внешние API) применяется гардрейл-последовательность **до** выполнения — Jev в ней только шаг 2, не последний и не единственный:
 
 1. Нормализовать имя инструмента и его аргументы.
-2. Задать Jev узкий вопрос о риске/необходимости одобрения (`templates/scripts/jev-gate.sh`, `score`+`noul` в одном вызове).
+2. Задать Jev узкий вопрос о риске/необходимости одобрения (`~/.claude/scripts/ojc/jev-gate.sh`, `score`+`noul` в одном вызове).
 3. Прогнать детерминированные allowlist и проверку прав (код, не Jev).
 4. Неясные случаи — на подтверждение пользователю или человеку.
 5. Выполнить с idempotency key и записью в аудит-лог.
@@ -283,18 +300,20 @@ ask Jev one atomic typed question instead of reasoning about it yourself.
 Jev only answers — it never authorizes or executes anything; you (via the
 wrapper script) still enforce the final decision:
 
-- Model routing: `templates/scripts/jev-route.sh "<subtask description>"` —
-  a `choice` question over {opus-self, ojc-boilerplate-executor, ojc-quick-helper}.
-  Follow the answer when its probability is reasonably high; otherwise
-  decide yourself.
+- Model routing: `~/.claude/scripts/ojc/jev-route.sh "<subtask description>"`
+  (or `jev-route.ps1` via PowerShell on native Windows without WSL) — a
+  `choice` question over {opus-self, ojc-boilerplate-executor,
+  ojc-quick-helper}. Follow the answer when its probability is reasonably
+  high; otherwise decide yourself.
 - Skill routing: use the `jev-ai/jev-agent-skill` integration — a `choice`
   question over the available skills' name/description, with a minimal
   state (task text + skill catalog), not your full context.
 - Tool-call gating for anything risky (`Bash`, `Write` outside the obvious
-  scope, external calls): run `templates/scripts/jev-gate.sh` first
-  (score + noul in one call), then still apply the deterministic
-  allowlist/permission check before executing — never treat a confident
-  Jev answer alone as authorization for a destructive or external action.
+  scope, external calls): run `~/.claude/scripts/ojc/jev-gate.sh` (or
+  `jev-gate.ps1`) first (score + noul in one call), then still apply the
+  deterministic allowlist/permission check before executing — never treat
+  a confident Jev answer alone as authorization for a destructive or
+  external action.
 
 Routing targets:
 - `opus-self` → do it yourself (architecture, complex/ambiguous debugging,
@@ -387,11 +406,13 @@ transcripts or tool-call streams.
 ```bash
 claude doctor                              # версия, автообновление
 /codex:setup                               # должно быть "Codex is ready"
-bash templates/scripts/jev-route.sh "rename a variable in utils.ts"
+~/.claude/scripts/ojc/jev-route.sh "rename a variable in utils.ts"
                                             # ожидаем choice: ojc-boilerplate-executor
-bash templates/scripts/jev-gate.sh "rm -rf build/" "Bash"
+~/.claude/scripts/ojc/jev-gate.sh "rm -rf build/" "Bash"
                                             # ожидаем высокий score/noul → эскалация
 ```
+
+(скрипты должны быть уже скопированы в `~/.claude/scripts/ojc/` по шагам раздела 4.4 — если ещё нет, см. также раздел 11 для Windows.)
 
 Если всё возвращает осмысленный JSON без ошибок авторизации — установка готова. Дальше — реальная задача по шаблону из раздела 6, с обязательным "сначала покажи мне план".
 
@@ -400,6 +421,7 @@ bash templates/scripts/jev-gate.sh "rm -rf build/" "Bash"
 ## 9. Частые ошибки
 
 - **Несовпадение имён сабагентов.** В `CLAUDE.md` и в `jev-route.sh` должны быть ровно те имена, что в `name:` файлов сабагентов (`ojc-boilerplate-executor`, `ojc-quick-helper`). Разошлись — оркестратор либо не найдёт агента, либо Jev-маршрутизация укажет на несуществующую цель.
+- **Скрипты вызываются по пути внутри клона репозитория (`templates/scripts/...`), а не по глобальному пути.** `CLAUDE.md` копируется в любой проект и должен работать из любого проекта — если скрипты не скопированы в `~/.claude/scripts/ojc/` (раздел 4.4) и `CLAUDE.md` в другом проекте всё ещё ссылается на `templates/scripts/...`, вызов упадёт с "файл не найден", потому что такого пути там просто нет.
 - **Codex используется как peer, а не ревьюер.** Если случайно начать звать `/codex:rescue` вместо `/codex:review` — вы вернётесь к peer-схеме и потеряете смысл разделения ролей из этого документа.
 - **Забыли `/reload-plugins`** после установки плагина Codex — без этого шага `/codex:*` команды не появятся.
 - **Нет `JEV_API_KEY`** — `jev-agent-skill`, `jev-route.sh` и `jev-gate.sh` откажут с ошибкой авторизации. Переменная должна быть в окружении именно той сессии/терминала, откуда стартует Claude Code.
@@ -426,6 +448,8 @@ templates/scripts/jev-route.ps1    — то же самое, нативный Po
 templates/scripts/jev-gate.ps1     — то же самое, нативный PowerShell для Windows без WSL
 templates/task-example.md          — пример постановки задачи оркестратору
 ```
+
+`templates/agents/` и `templates/scripts/` — это исходники для копирования, а не место, откуда их вызывает `CLAUDE.md`. Рабочие копии живут глобально: сабагенты в `~/.claude/agents/` (раздел 4.2), скрипты Jev в `~/.claude/scripts/ojc/` (раздел 4.4) — так они работают из любого проекта на машине, а не только из клона этого репозитория. После `git pull` с обновлениями — копируйте файлы поверх старых.
 
 ---
 
@@ -482,12 +506,18 @@ templates/task-example.md          — пример постановки зад�
    echo 'export JEV_LANGUAGE=ru' >> ~/.bashrc
    source ~/.bashrc
    ```
-8. Проверка:
+8. Скопируйте скрипты и сабагентов в глобальные папки (см. разделы 4.2 и 4.4 — это одноразовая установка, работает потом из любого проекта, а не только из этого клона):
    ```bash
-   chmod +x templates/scripts/*.sh
-   bash templates/scripts/jev-route.sh "rename a variable in utils.ts"
+   mkdir -p ~/.claude/agents ~/.claude/scripts/ojc
+   cp templates/agents/*.md ~/.claude/agents/
+   cp templates/scripts/jev-route.sh templates/scripts/jev-gate.sh ~/.claude/scripts/ojc/
+   chmod +x ~/.claude/scripts/ojc/*.sh
    ```
-9. Если параллельно правите файлы из Windows-редактора (VS Code) — установите расширение **WSL** для VS Code и открывайте папку командой `code .` прямо из терминала WSL внутри клонированной папки: VS Code подключится к WSL-окружению, а редактируете вы всё равно в привычном Windows-интерфейсе.
+9. Проверка:
+   ```bash
+   ~/.claude/scripts/ojc/jev-route.sh "rename a variable in utils.ts"
+   ```
+10. Если параллельно правите файлы из Windows-редактора (VS Code) — установите расширение **WSL** для VS Code и открывайте папку командой `code .` прямо из терминала WSL внутри клонированной папки: VS Code подключится к WSL-окружению, а редактируете вы всё равно в привычном Windows-интерфейсе.
 
 ### 11.3 Windows — вариант Б: нативно, без WSL (PowerShell)
 
@@ -525,14 +555,22 @@ templates/task-example.md          — пример постановки зад�
    ```powershell
    Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
    ```
-   Скажет "Да" на подтверждение — это разрешает запуск локальных скриптов только для вашего пользователя, безопасно для личной машины. Альтернатива без изменения политики глобально — запускать каждый раз с обходом:
+   Скажет "Да" на подтверждение — это разрешает запуск локальных скриптов только для вашего пользователя, безопасно для личной машины. Альтернатива без изменения политики глобально — запускать каждый раз с обходом (`-ExecutionPolicy Bypass`, см. пример ниже).
+7. **Скопировать сабагентов и скрипты в глобальные папки** (одноразово — как в разделах 4.2 и 4.4; дальше это работает из любого проекта, а не только из этого клона):
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\templates\scripts\jev-route.ps1 "rename a variable in utils.ts"
+   New-Item -ItemType Directory -Force -Path "$HOME\.claude\agents" | Out-Null
+   New-Item -ItemType Directory -Force -Path "$HOME\.claude\scripts\ojc" | Out-Null
+   Copy-Item templates\agents\*.md "$HOME\.claude\agents\"
+   Copy-Item templates\scripts\jev-route.ps1, templates\scripts\jev-gate.ps1 "$HOME\.claude\scripts\ojc\"
    ```
-7. **Проверка:**
+8. **Проверка:**
    ```powershell
-   .\templates\scripts\jev-route.ps1 "rename a variable in utils.ts"
-   .\templates\scripts\jev-gate.ps1 -ProposedArguments "rm -rf build/" -ToolName "Bash"
+   & "$HOME\.claude\scripts\ojc\jev-route.ps1" "rename a variable in utils.ts"
+   & "$HOME\.claude\scripts\ojc\jev-gate.ps1" -ProposedArguments "rm -rf build/" -ToolName "Bash"
+   ```
+   Если `ExecutionPolicy` ещё не разрешена — запустите через обход:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File "$HOME\.claude\scripts\ojc\jev-route.ps1" "rename a variable in utils.ts"
    ```
    Ожидается JSON-ответ от Jev (route/risk/needs_human_review) без ошибок авторизации.
 
@@ -562,14 +600,14 @@ templates/task-example.md          — пример постановки зад�
 # bash / WSL / Git Bash
 export JEV_PROVIDER=openrouter
 export OPENROUTER_API_KEY=sk-or-v1-...
-bash templates/scripts/jev-route.sh "rename a variable in utils.ts"
+~/.claude/scripts/ojc/jev-route.sh "rename a variable in utils.ts"
 ```
 
 ```powershell
 # PowerShell (Windows)
 $env:JEV_PROVIDER = "openrouter"
 $env:OPENROUTER_API_KEY = "sk-or-v1-..."
-.\templates\scripts\jev-route.ps1 "rename a variable in utils.ts"
+& "$HOME\.claude\scripts\ojc\jev-route.ps1" "rename a variable in utils.ts"
 ```
 
 По умолчанию (`JEV_PROVIDER` не задан = `direct`) скрипты идут напрямую в `thejevai.com` с `JEV_API_KEY`. При `JEV_PROVIDER=openrouter` они идут в `https://openrouter.ai/api/v1/systemone` с `OPENROUTER_API_KEY` и моделью `typesafe/jev-latest` (можно переопределить точный слаг модели переменной `JEV_MODEL`, например `typesafe/jev-1.13` под конкретную закреплённую версию).
