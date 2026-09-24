@@ -5,9 +5,10 @@
 - **Opus (последняя версия)** — одновременно **оркестратор и главный исполнитель**: сам планирует, сам делает архитектурно значимую и сложную работу, сам синтезирует результат;
 - **способные, но более дешёвые модели** (Sonnet, при желании Haiku) в виде сабагентов делают всё остальное — рутину, шаблонный код, тесты, форматирование;
 - **Codex** подключён как **ревьюер**, а не как равноправный соисполнитель — проверяет готовые изменения независимым взглядом *после* того, как Opus их сделал;
-- **Jev** (TypeSafe `System One`, decision-модель, доступна через OpenRouter) используется в двух местах ради экономии токенов:
-  1. **маршрутизация моделей** — дешёвое (~$0.00002, 0.1–1.5 c) решение "кто выполняет эту подзадачу: Opus сам / Sonnet / Haiku", вместо того чтобы дорогая модель тратила reasoning на этот выбор;
-  2. **маршрутизация skills** — вместо того чтобы держать в контексте оркестратора описания всех доступных skills, один дешёвый вызов Jev решает, какой skill (если вообще какой-то) подключить под конкретный запрос.
+- **Jev** (TypeSafe `System One`, typed decision-модель, API `thejevai.com/v1/systemone`) используется в трёх местах ради экономии токенов и надёжности — но **только отвечает на узкие вопросы, никогда не авторизует и не исполняет действия сама**:
+  1. **маршрутизация моделей** — быстрый (0.1–1.5 c) `choice`-ответ "кто выполняет эту подзадачу: Opus сам / Sonnet / Haiku", вместо того чтобы дорогая модель тратила reasoning на этот выбор;
+  2. **маршрутизация skills** — вместо того чтобы держать в контексте оркестратора описания всех доступных skills, атомарный `choice`-вопрос к Jev решает, какой skill (если вообще какой-то) подключить под конкретный запрос;
+  3. **гейтинг рискованных вызовов инструментов** — `score`/`noul`-вопрос как один из нескольких контролей перед потенциально опасным `Bash`/`Write`/внешним вызовом; решение и выполнение всё равно за детерминированным кодом.
 
 Это адаптация схемы "Fable-оркестратор + сабагенты + Codex" под другой набор ролей: здесь дорогая модель не только планирует, но и исполняет сложную часть сама, Codex понижен до ревьюера, и добавлен отдельный дешёвый слой принятия решений (Jev) для маршрутизации моделей и skills.
 
@@ -23,10 +24,12 @@ flowchart TD
         O["Opus (latest)<br/>оркестратор + главный исполнитель<br/>план → сложная работа сам → синтез"]
     end
 
-    O -->|"перед делегированием<br/>или подключением skill"| J["Jev (typesafe/jev)<br/>дешёвое typed-решение<br/>~$0.00002 / 0.1–1.5с"]
+    O -->|"узкий typed-вопрос<br/>+ минимальный state"| J["Jev (jev-latest)<br/>POST thejevai.com/v1/systemone<br/>отвечает choice/score/noul,<br/>НЕ выполняет действия"]
 
-    J -->|"routing: skill_name / instruction"| SK["Skill подключается<br/>по решению Jev"]
-    J -->|"routing: кто исполняет"| ROUTE{"Кто делает подзадачу?"}
+    J -->|"ответ: choice/score/noul<br/>+ вероятности"| CODE["Код-обвязка (скрипт/хук)<br/>проверяет allowlist и права,<br/>сам решает и выполняет —<br/>Jev не авторизует сам себя"]
+
+    CODE -->|"route: skill_name"| SK["Skill подключается,<br/>если решение подтверждено кодом"]
+    CODE -->|"route: кто исполняет"| ROUTE{"Кто делает подзадачу?"}
 
     ROUTE -->|"архитектура, сложный баг,<br/>синтез — Opus сам"| O
     ROUTE -->|"рутина, шаблонный код,<br/>тесты, форматирование"| B["boilerplate-executor<br/>(Sonnet, сабагент)"]
@@ -62,9 +65,14 @@ flowchart TD
 | `boilerplate-executor` | Sonnet | сабагент, `~/.claude/agents/` | Шаблонный код, тесты, форматирование, механические правки |
 | `quick-helper` (опционально) | Haiku | сабагент, `~/.claude/agents/` | Тривиальные дешёвые задачи: поиск по коду, короткие однострочные правки, суммаризация |
 | Codex | внешний движок OpenAI, плагин `codex` для Claude Code | `/codex:review`, `/codex:adversarial-review` | **Только ревью** готовых изменений Opus — независимый взгляд, поиск багов/уязвимостей/упущений. Не пишет код, не равноправный соисполнитель |
-| Jev | `typesafe/jev-*` через OpenRouter (`System One`, typed decision model) | CLI `jev-skill-router` + отдельный shell-скрипт для маршрутизации моделей | 1) выбор, кто исполняет подзадачу; 2) выбор, какой skill подключить; 3) (опционально) гейтинг рискованных вызовов инструментов |
+| Jev | `jev-latest` — API `thejevai.com` (System One, typed decision model) | skill `jev-ai/jev-agent-skill` (`npx skills add`) + скрипты `templates/scripts/jev-route.sh`, `templates/scripts/jev-gate.sh` | Отвечает на узкие типизированные вопросы о текущем состоянии — не выполняет действия и не авторизует их сам |
 
-> Jev — это **не** LLM в привычном смысле: он не генерирует текст, а возвращает typed-ответ (choice / score / probability) с калиброванной уверенностью за ~100–1500 мс и на порядки дешевле обычного LLM-вызова. Поэтому он годится именно для routing/triage/gating, а не для содержательной работы.
+> **Разделение ролей — ключевой принцип Jev.** LLM (Opus/Sonnet/Haiku) планирует, пишет код, рассуждает. Jev **не генерирует текст** — он отвечает на atomic typed-вопросы трёх видов:
+> - `choice` — выбор одного варианта из заданного набора (роутинг: opus-self / boilerplate-executor / quick-helper; proceed / confirm / reject);
+> - `score` — упорядоченная шкала `low → critical` (приоритет, серьёзность);
+> - `noul` — вероятность, что конкретное утверждение истинно (например, «нужен ли человек для этого вызова?»).
+>
+> Код-обвязка (скрипт, hook) проверяет права/allowlist и **сам** выполняет или отклоняет действие. Агент может *предложить* действие через Jev-вопрос, но не должен сам себе его разрешать — это не Jev "решает", а детерминированный код на основе ответа Jev плюс собственных проверок.
 
 ---
 
@@ -153,70 +161,98 @@ codex login
 
 Команду `/codex:rescue` (делегирование Codex как равноправному исполнителю) в этой схеме **не используем** — это сознательное отличие от peer-схемы: Codex здесь всегда работает post-hoc, над уже готовым изменением Opus.
 
-### 4.4 Jev — маршрутизация моделей и skills
+### 4.4 Jev — типизированные решения для маршрутизации и гейтинга
+
+Jev — не LLM в привычном смысле. Он не пишет текст и не выполняет действия — он отвечает на узкие типизированные вопросы о переданном ему `state`. Решает и исполняет действие всегда **код-обвязка** (скрипт/хук в Claude Code), а не сам Jev — агент может через Jev *предложить* маршрут или оценку риска, но не имеет права сам себе это разрешить. Это и есть источник экономии токенов: вместо того чтобы дорогая модель рассуждала над routing/triage/gating прозой, атомарный typed-вопрос к Jev даёт структурированный ответ за ~100–1500 мс и на порядки дешевле обычного LLM-вызова.
 
 **Ключ доступа:**
 
 ```bash
-export OPENROUTER_API_KEY=sk-or-v1-...
+export JEV_API_KEY=...
+export JEV_LANGUAGE=en   # или ru — язык вопросов/ответов
 ```
-(сохраните в `~/.zshrc` / `~/.bashrc` / менеджере секретов вашей ОС — не коммитьте ключ в репозиторий).
+(сохраните в `~/.zshrc` / `~/.bashrc` / менеджере секретов вашей ОС; ключ **только** в env на сервере/машине агента — никогда не в промпте, транскрипте сессии или репозитории).
 
-**4.4.1 Маршрутизация skills — готовый инструмент**
-
-Используем готовый CLI [`jev-skill-router`](https://github.com/aleksvega/jev-skill-router): вместо того, чтобы оркестратор держал в контексте описания всех подключённых skills, один дешёвый Jev-вызов решает, какой skill (если вообще нужен) подключить под конкретный запрос.
+**4.4.1 Skill для coding-агентов (официальный путь)**
 
 ```bash
-npm install -g jev-skill-router
-jev-skill-router --init claude   # готовит интеграцию под Claude Code
+npx skills add jev-ai/jev-agent-skill
 ```
 
-Инструмент сам сканирует `~/.claude/skills`, `./skills` в проекте и извлекает `name`/`description` из frontmatter `SKILL.md`. Пример вызова и ответа:
+Даёт Claude Code готовую интеграцию с Jev API без ручного написания HTTP-вызовов для типовых случаев. Настраивается через `JEV_API_KEY` и `JEV_LANGUAGE` из окружения.
 
-```bash
-$ jev-skill-router "add caching to /search endpoint with Redis"
-{"complexity":3.05,"use_skill":false,"skill_name":null,
- "instruction":"No specialized skill needed; proceed with the request directly.",
- "confidence":2.19}
+**4.4.2 Контракт API**
+
 ```
+POST https://thejevai.com/v1/systemone
+Authorization: Bearer $JEV_API_KEY
+Content-Type: application/json
 
-**4.4.2 Маршрутизация моделей — тонкая обёртка**
-
-`jev-skill-router` заточен под выбор skill, а не под выбор "кто исполняет подзадачу". Для этого используем отдельный небольшой скрипт — `templates/scripts/jev-route.sh`, который дёргает Jev Decisions API напрямую:
-
-```bash
-#!/usr/bin/env bash
-# templates/scripts/jev-route.sh — Jev-решение: кто исполняет подзадачу
-set -euo pipefail
-
-TASK="$1"
-
-curl -sS https://openrouter.ai/api/alpha/decisions \
-  -H "Authorization: Bearer ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY}" \
-  -H "Content-Type: application/json" \
-  -d "$(cat <<JSON
 {
-  "model": "typesafe/jev-1.13",
-  "question": {
-    "type": "choice",
-    "options": ["opus-self", "boilerplate-executor", "quick-helper"],
-    "text": "Who should execute this subtask: the orchestrator itself (complex/architectural/ambiguous), the boilerplate-executor subagent (mechanical/routine), or the quick-helper subagent (trivial/cheap)?"
-  },
-  "context": $(printf '%s' "$TASK" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))')
+  "model": "jev-latest",
+  "state": { ... минимальный JSON: суть запроса, предлагаемый tool,
+              его аргументы, применимая политика, релевантные улики ... },
+  "questions": {
+    "<стабильный_ключ_вопроса>": {
+      "type": "choice | score | noul",
+      ... поля вопроса (options для choice, шкала для score, утверждение для noul) ...
+    },
+    "<другой_ключ>": { ... }
+  }
 }
-JSON
-)"
 ```
 
-> Поля JSON и endpoint (`/api/alpha/decisions`, модель `typesafe/jev-1.13` или `~typesafe/jev-latest`) соответствуют документированному использованию Jev через OpenRouter Decisions API на момент написания (сентябрь 2026). Перед использованием в проде сверьтесь с актуальной документацией — https://openrouter.ai/docs/guides/community/jev — API decision-моделей у TypeSafe/OpenRouter может версионироваться.
+Важно из документации/статьи:
+- **Каждый вопрос атомарный.** Не "что делать агенту?", а "какой из разрешённых маршрутов подходит?" — вопрос должен соответствовать форме ответа (`choice`/`score`/`noul`), а не быть общим.
+- **`state` — минимальный**, а не весь транскрипт: запрос, предлагаемый tool + аргументы, применимая политика, релевантные улики. Не отправляйте историю чата целиком.
+- **Несколько вопросов к одному `state` считаются параллельно одним вызовом** — так можно получить `route` + `risk` + `needs_human_review` за один HTTP-запрос вместо трёх.
+- **Ключи вопросов держите стабильными** между версиями — иначе логи и метрики (FP/FN, объём ручной проверки) не будут сравнимы.
 
-Использование: оркестратор (Opus) перед делегированием нетривиальной подзадачи вызывает скрипт, получает `choice` + `confidence`, и:
-- при низкой уверенности (например confidence < порога) — решает сам, не полагаясь на Jev;
-- иначе — следует выбору: делает сам / зовёт `boilerplate-executor` / зовёт `quick-helper`.
+Точные имена полей ответа (вероятности, формат `choice`/`score`/`noul`) сверяйте с https://thejevai.com/docs — ниже приведена иллюстративная структура запроса/ответа по описанию из статьи, а не гарантированно дословная схема.
 
-**4.4.3 (Опционально) гейтинг рискованных действий**
+**4.4.3 Маршрутизация моделей — `jev-route.sh`**
 
-Тот же принцип можно применить к разрешениям на потенциально опасные вызовы инструментов — Jev как дешёвый предохранитель перед `Bash`/`Write` в чувствительных местах, через `PreToolUse`-хук (см. `update-config`/`fewer-permission-prompts` в Claude Code и подход из плагина [`jev-skill` (KHAEntertainment)](https://github.com/KHAEntertainment/jev-skill) — "gate", fail-closed при недоступности Jev). В этой схеме это не обязательный шаг, а расширение по желанию.
+`templates/scripts/jev-route.sh` — атомарный `choice`-вопрос "кто исполняет подзадачу":
+
+```bash
+./templates/scripts/jev-route.sh "rename a variable in utils.ts"
+# → {"answers":{"route":{"choice":"boilerplate-executor","probability":0.94}}}
+```
+
+Оркестратор (Opus) перед делегированием нетривиальной подзадачи вызывает скрипт и:
+- при низкой уверенности ответа — решает сам, не полагаясь на Jev;
+- иначе следует `choice`: делает сам (`opus-self`) / зовёт `boilerplate-executor` / зовёт `quick-helper`.
+
+**4.4.4 Гейтинг вызовов инструментов — `jev-gate.sh` и порядок проверок**
+
+Для потенциально рискованных вызовов (`Bash`, `Write` в чувствительных путях, внешние API) применяется гардрейл-последовательность **до** выполнения — Jev в ней только шаг 2, не последний и не единственный:
+
+1. Нормализовать имя инструмента и его аргументы.
+2. Задать Jev узкий вопрос о риске/необходимости одобрения (`templates/scripts/jev-gate.sh`, `score`+`noul` в одном вызове).
+3. Прогнать детерминированные allowlist и проверку прав (код, не Jev).
+4. Неясные случаи — на подтверждение пользователю или человеку.
+5. Выполнить с idempotency key и записью в аудит-лог.
+
+Для деструктивных и внешних действий должно требоваться согласие **нескольких** контролей, а не один вероятностный порог — политика обязана уметь отклонить действие, даже если Jev вернул уверенный "разрешить".
+
+Политика маршрутизации по итоговому сигналу:
+
+| Сигнал | Действие |
+|---|---|
+| Уверенно + малый импакт | выполнить автоматически |
+| Неоднозначно | запросить дополнительный контекст |
+| Высокий импакт или удаление | требовать явное одобрение (человек/подтверждение) |
+| Мусорный/некорректный вход | безопасный отказ, без попытки угадать |
+
+**4.4.5 Пороги и аудит-логи**
+
+Пороги (confidence/probability, ниже которых решение эскалируется) подбирайте на исторических и adversarial-примерах, отслеживая false positive / false negative и объём ручной проверки. В аудит-лог пишите: версию вопроса, версию схемы `state`, полный ответ Jev (включая вероятности), итоговое действие кода-обвязки и флаг "решение изменено человеком" — без этого пороги нечем будет калибровать при апдейтах.
+
+**4.4.6 Маршрутизация skills**
+
+Официальный skill (4.4.1) закрывает и этот случай: атомарный `choice`-вопрос с минимальным `state` (текст запроса + список доступных `name`/`description` из `SKILL.md`) вместо того, чтобы оркестратор держал в контексте описания всех skills. Если нужен отдельный готовый CLI под это — есть сторонний проект [`jev-skill-router`](https://github.com/aleksvega/jev-skill-router) (не проверен напрямую в этой сессии из-за сетевых ограничений, трактуйте как community-инструмент, а не первичный источник).
+
+> **Итог по достоверности:** архитектурные принципы (разделение ролей, атомарные typed-вопросы, минимальный `state`, параллельные вопросы, многоконтрольный гейтинг для деструктивных действий) — из официальной статьи и надёжны. Конкретные имена полей запроса/ответа — сверяйте с https://thejevai.com/docs, это community/vendor-пост, а не спецификация API дословно.
 
 ---
 
@@ -233,13 +269,22 @@ parts of the work yourself. Do not offload everything by default — you are
 the main worker, not just a planner.
 
 Before delegating a subtask, or before deciding whether to load a skill,
-run a cheap Jev decision instead of reasoning about it yourself:
+ask Jev one atomic typed question instead of reasoning about it yourself.
+Jev only answers — it never authorizes or executes anything; you (via the
+wrapper script) still enforce the final decision:
 
-- Skill routing: `jev-skill-router "<task description>"` — follow the
-  returned `instruction`; load `skill_name` only if `use_skill` is true.
 - Model routing: `templates/scripts/jev-route.sh "<subtask description>"` —
-  follow the returned `choice` when `confidence` is reasonably high;
-  otherwise decide yourself.
+  a `choice` question over {opus-self, boilerplate-executor, quick-helper}.
+  Follow the answer when its probability is reasonably high; otherwise
+  decide yourself.
+- Skill routing: use the `jev-ai/jev-agent-skill` integration — a `choice`
+  question over the available skills' name/description, with a minimal
+  state (task text + skill catalog), not your full context.
+- Tool-call gating for anything risky (`Bash`, `Write` outside the obvious
+  scope, external calls): run `templates/scripts/jev-gate.sh` first
+  (score + noul in one call), then still apply the deterministic
+  allowlist/permission check before executing — never treat a confident
+  Jev answer alone as authorization for a destructive or external action.
 
 Routing targets:
 - `opus-self` → do it yourself (architecture, complex/ambiguous debugging,
@@ -262,7 +307,8 @@ transcripts or tool-call streams.
 Почему так, а не иначе:
 
 - Явно сказано, что Opus **и планирует, и делает сам** — иначе модель по инерции начнёт делегировать всё подряд, как в чистой Fable-схеме, и вы потеряете смысл "Opus как главный исполнитель".
-- Jev поставлен **перед** делегированием и **перед** подключением skill — именно здесь экономится больше всего токенов: дешёвое typed-решение вместо reasoning дорогой модели.
+- Jev поставлен **перед** делегированием и **перед** подключением skill — именно здесь экономится больше всего токенов: атомарный typed-вопрос вместо reasoning дорогой модели над routing/triage.
+- Явно прописано, что **Jev не авторизует действия сам** — итоговое решение и выполнение всегда за детерминированным кодом (allowlist/permission check), особенно для рискованных вызовов. Это прямо из принципа "разделения ролей" в статье: агент предлагает, код проверяет права и исполняет.
 - Codex явно назван **ревьюером**, а не peer — прямая противоположность оригинальной инструкции ("treat as a peer, not a reviewer"). Это осознанное изменение под вашу задачу.
 - "Resolve every finding... or state explicitly why not" — чтобы ревью не превращалось в ритуал для галочки.
 - "Keep your own context lean" — тот же принцип изоляции контекста, что и в исходной схеме.
@@ -280,10 +326,12 @@ transcripts or tool-call streams.
 
 Ты — Opus, оркестратор и главный исполнитель. Сложную/архитектурную часть
 делай сам. Перед делегированием подзадач и перед подключением skill —
-используй Jev-маршрутизацию (jev-skill-router / jev-route.sh). Рутину отдавай
-boilerplate-executor, тривиальные задачи — quick-helper. После завершения
-реализации обязательно прогони изменения через Codex-ревью
-(/codex:review или /codex:adversarial-review) и закрой все замечания.
+задай Jev атомарный typed-вопрос (jev-route.sh / jev-agent-skill); итоговое
+решение и рискованные вызовы всё равно проверяй детерминированным кодом,
+не полагайся на один ответ Jev. Рутину отдавай boilerplate-executor,
+тривиальные задачи — quick-helper. После завершения реализации обязательно
+прогони изменения через Codex-ревью (/codex:review или
+/codex:adversarial-review) и закрой все замечания.
 
 Сначала покажи мне план, затем приступай к выполнению.
 ```
@@ -299,8 +347,9 @@ boilerplate-executor, тривиальные задачи — quick-helper. По
 | Планирование, декомпозиция, синтез нескольких направлений, архитектурное решение | Opus сам, `/effort max` только на этой фазе | Здесь нужна дорогая модель — платите только тут |
 | Механическая правка, шаблон, тест, форматирование | Jev → `boilerplate-executor` (Sonnet) | Дешёвая модель справляется не хуже, а стоит на порядок меньше |
 | Тривиальный точечный вопрос / поиск / однострочная правка | Jev → `quick-helper` (Haiku) | Самая дешёвая модель, достаточно для простого случая |
-| "Какой skill подключить?" | `jev-skill-router` вместо ручного анализа оркестратором | ~$0.00002 и 0.1–1.5с вместо reasoning дорогой модели над списком skills |
-| "Кто исполняет эту подзадачу?" | `jev-route.sh` вместо решения оркестратором "на глаз" | Тот же порядок экономии, типизированный ответ вместо прозы |
+| "Какой skill подключить?" | Jev `choice`-вопрос (jev-agent-skill) вместо ручного анализа оркестратором | ~0.1–1.5с и типизированный ответ вместо reasoning дорогой модели над списком skills |
+| "Кто исполняет эту подзадачу?" | `jev-route.sh` (`choice`) вместо решения оркестратором "на глаз" | Тот же порядок экономии, структурированный ответ вместо прозы |
+| "Насколько рискован этот вызов инструмента?" | `jev-gate.sh` (`score`+`noul`) + детерминированный allowlist | Быстрый предохранитель до дорогого/необратимого действия, но не единственный контроль |
 | Готовое изменение перед тем, как считать задачу законченной | Codex (`/codex:review`) | Ревью не тратит токены Claude, идёт по отдельному лимиту OpenAI/ChatGPT |
 | Несвязанные мелкие задачи после основной сессии | Новая сессия на Sonnet напрямую, без оркестратора | Не тащите дорогой Opus-контекст через десятки мелких итераций |
 
@@ -311,9 +360,10 @@ boilerplate-executor, тривиальные задачи — quick-helper. По
 ```bash
 claude doctor                              # версия, автообновление
 /codex:setup                               # должно быть "Codex is ready"
-jev-skill-router "test decision routing"   # должен вернуть валидный JSON
 bash templates/scripts/jev-route.sh "rename a variable in utils.ts"
                                             # ожидаем choice: boilerplate-executor
+bash templates/scripts/jev-gate.sh "rm -rf build/" "Bash"
+                                            # ожидаем высокий score/noul → эскалация
 ```
 
 Если всё возвращает осмысленный JSON без ошибок авторизации — установка готова. Дальше — реальная задача по шаблону из раздела 6, с обязательным "сначала покажи мне план".
@@ -325,9 +375,11 @@ bash templates/scripts/jev-route.sh "rename a variable in utils.ts"
 - **Несовпадение имён сабагентов.** В `CLAUDE.md` и в `jev-route.sh` должны быть ровно те имена, что в `name:` файлов сабагентов (`boilerplate-executor`, `quick-helper`). Разошлись — оркестратор либо не найдёт агента, либо Jev-маршрутизация укажет на несуществующую цель.
 - **Codex используется как peer, а не ревьюер.** Если случайно начать звать `/codex:rescue` вместо `/codex:review` — вы вернётесь к peer-схеме и потеряете смысл разделения ролей из этого документа.
 - **Забыли `/reload-plugins`** после установки плагина Codex — без этого шага `/codex:*` команды не появятся.
-- **Нет `OPENROUTER_API_KEY`** — и `jev-skill-router`, и `jev-route.sh` откажут с ошибкой авторизации. Переменная должна быть в окружении именно той сессии/терминала, откуда стартует Claude Code.
+- **Нет `JEV_API_KEY`** — `jev-agent-skill`, `jev-route.sh` и `jev-gate.sh` откажут с ошибкой авторизации. Переменная должна быть в окружении именно той сессии/терминала, откуда стартует Claude Code.
 - **Opus делегирует вообще всё.** Если в CLAUDE.md не прописано явно "you are the primary executor, not just a planner" — модель по умолчанию скатывается в чисто оркестраторское поведение (как Fable в исходной схеме) и не делает сложную работу сама.
-- **Jev используется как единственный источник истины для рискованных решений.** Jev — быстрый и дешёвый, но калиброванная уверенность (`confidence`) — не гарантия: при низкой уверенности решение должен принимать сам оркестратор, а не слепо следовать `choice`.
+- **Jev используется как единственный источник истины для рискованных решений.** Это прямое нарушение принципа из статьи: Jev только отвечает на typed-вопрос, решение и выполнение — всегда за детерминированным кодом (allowlist, проверка прав). Для деструктивных/внешних действий нужно согласие нескольких контролей, а не один вероятностный порог от Jev.
+- **В `state` для Jev передаётся весь транскрипт/история сессии.** Так теряется и экономия, и предсказуемость — `state` должен быть минимальным JSON (суть запроса, предлагаемый tool и аргументы, политика, улики).
+- **Ключи вопросов меняются между версиями промпта.** Тогда логи/метрики (FP/FN, доля эскалаций) не сравнить между итерациями — держите ключи вопросов стабильными.
 - **VS Code extension игнорирует `model` в project `settings.json`.** Известный баг — переключайте модель вручную через `/model` или запускайте `claude` из терминала.
 - **Держите `/effort max` весь день на Opus.** Дорого и не нужно вне этапа планирования — понижайте эффорт или переходите на прямой вызов Sonnet для мелких несвязанных правок.
 
@@ -341,7 +393,8 @@ templates/CLAUDE.md                — готовый блок для CLAUDE.md 
 templates/settings.json.example    — project-level settings.json с моделью Opus
 templates/agents/boilerplate-executor.md
 templates/agents/quick-helper.md
-templates/scripts/jev-route.sh     — Jev-маршрутизация моделей
+templates/scripts/jev-route.sh     — Jev choice-вопрос: кто исполняет подзадачу
+templates/scripts/jev-gate.sh      — Jev score+noul: гейтинг рискованных вызовов
 templates/task-example.md          — пример постановки задачи оркестратору
 ```
 
@@ -349,9 +402,13 @@ templates/task-example.md          — пример постановки зад�
 
 ## 11. Источники
 
+Первичный источник по API и принципам (используйте как основной ориентир):
+
+- [Jev AI API & AI Agents: A Practical Guide to Reliable Agent Workflows](https://huggingface.co/blog/sora-2/jev-ai-api-ai-agents-a-practical-guide-to-reliable) — эндпоинт `POST https://thejevai.com/v1/systemone`, модель `jev-latest`, три типа вопросов (`choice`/`score`/`noul`), минимальный `state`, параллельные вопросы в одном вызове, 5-шаговый гардрейл-порядок, политика многоконтрольного одобрения для деструктивных действий, логирование версий/вероятностей.
+- [thejevai.com/docs](https://thejevai.com/docs) — официальная документация, сверяйте точные имена полей запроса/ответа перед использованием в проде (не проверено напрямую в этой сессии из-за сетевых ограничений).
+
+Вторичные/community-источники (использовались для установки и общего контекста, могут расходиться с официальным API в деталях):
+
 - [What Is Jev? TypeSafe's Decision Model Explained for Developers — OpenRouter Blog](https://openrouter.ai/blog/insights/what-is-jev/)
-- [Jev Documentation — TypeSafe Decision Model on OpenRouter](https://openrouter.ai/docs/guides/community/jev)
-- [Jev 1.13 — API Pricing & Providers | OpenRouter](https://openrouter.ai/typesafe/jev-1.13)
 - [jev-skill-router — Jev-powered skill router & security auditor](https://github.com/aleksvega/jev-skill-router)
 - [jev-skill (KHAEntertainment) — Claude Code plugin for Jev integration](https://github.com/KHAEntertainment/jev-skill)
-- [Jev AI API & AI Agents: A Practical Guide to Reliable Agent Workflows](https://huggingface.co/blog/sora-2/jev-ai-api-ai-agents-a-practical-guide-to-reliable)

@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# jev-route.sh — cheap Jev (typesafe/jev) decision: who should execute this
+# jev-route.sh — atomic Jev "choice" question: who should execute this
 # subtask — the orchestrator itself, or one of the subagents.
 #
+# Jev only ANSWERS the question. It does not decide or execute anything —
+# this script (and, above it, the calling agent) is what actually acts on
+# the answer, with a low-confidence fallback to human/self judgement.
+#
 # Usage:
-#   OPENROUTER_API_KEY=sk-or-v1-... ./jev-route.sh "rename variable X to Y in utils.ts"
+#   JEV_API_KEY=... ./jev-route.sh "rename variable X to Y in utils.ts"
 #
-# Prints the raw JSON response from the OpenRouter Decisions API, e.g.:
-#   {"choice":"boilerplate-executor","confidence":4.1}
-#
-# NOTE: verify the exact request/response schema against the current docs
-# before relying on this in production — decision-model APIs version faster
-# than this file does: https://openrouter.ai/docs/guides/community/jev
+# NOTE: this uses the endpoint, model id and question/state shape described
+# in the vendor's "Jev AI API & AI Agents" guide (POST .../v1/systemone,
+# model jev-latest, {state, questions}). The exact response field names are
+# illustrative — verify against https://thejevai.com/docs before relying on
+# this in production; APIs like this version faster than local scripts do.
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
@@ -19,19 +22,27 @@ if [[ $# -lt 1 ]]; then
 fi
 
 TASK="$1"
-: "${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY}"
+: "${JEV_API_KEY:?set JEV_API_KEY}"
+LANG_HINT="${JEV_LANGUAGE:-en}"
 
-CONTEXT_JSON=$(printf '%s' "$TASK" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
+STATE_JSON=$(python3 - "$TASK" "$LANG_HINT" <<'PY'
+import json, sys
+task, lang = sys.argv[1], sys.argv[2]
+print(json.dumps({"request_summary": task, "language": lang}))
+PY
+)
 
-curl -sS https://openrouter.ai/api/alpha/decisions \
-  -H "Authorization: Bearer ${OPENROUTER_API_KEY}" \
+curl -sS https://thejevai.com/v1/systemone \
+  -H "Authorization: Bearer ${JEV_API_KEY}" \
   -H "Content-Type: application/json" \
   -d "{
-    \"model\": \"typesafe/jev-1.13\",
-    \"question\": {
-      \"type\": \"choice\",
-      \"options\": [\"opus-self\", \"boilerplate-executor\", \"quick-helper\"],
-      \"text\": \"Who should execute this subtask: the orchestrator itself (complex/architectural/ambiguous), the boilerplate-executor subagent (mechanical/routine), or the quick-helper subagent (trivial/cheap)?\"
-    },
-    \"context\": ${CONTEXT_JSON}
+    \"model\": \"jev-latest\",
+    \"state\": ${STATE_JSON},
+    \"questions\": {
+      \"route\": {
+        \"type\": \"choice\",
+        \"options\": [\"opus-self\", \"boilerplate-executor\", \"quick-helper\"],
+        \"prompt\": \"Which route fits this subtask: opus-self (architecture, complex/ambiguous work, synthesis), boilerplate-executor (mechanical/routine work), or quick-helper (trivial/cheap lookups)?\"
+      }
+    }
   }"

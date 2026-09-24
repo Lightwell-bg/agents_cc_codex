@@ -6,13 +6,22 @@ parts of the work yourself. Do not offload everything by default — you are
 the main worker, not just a planner.
 
 Before delegating a subtask, or before deciding whether to load a skill,
-run a cheap Jev decision instead of reasoning about it yourself:
+ask Jev one atomic typed question instead of reasoning about it yourself.
+Jev only answers — it never authorizes or executes anything; you (via the
+wrapper script) still enforce the final decision:
 
-- Skill routing: `jev-skill-router "<task description>"` — follow the
-  returned `instruction`; load `skill_name` only if `use_skill` is true.
 - Model routing: `templates/scripts/jev-route.sh "<subtask description>"` —
-  follow the returned `choice` when `confidence` is reasonably high;
-  otherwise decide yourself.
+  a `choice` question over {opus-self, boilerplate-executor, quick-helper}.
+  Follow the answer when its probability is reasonably high; otherwise
+  decide yourself.
+- Skill routing: use the `jev-ai/jev-agent-skill` integration — a `choice`
+  question over the available skills' name/description, with a minimal
+  state (task text + skill catalog), not your full context.
+- Tool-call gating for anything risky (`Bash`, `Write` outside the obvious
+  scope, external calls): run `templates/scripts/jev-gate.sh` first
+  (score + noul in one call), then still apply the deterministic
+  allowlist/permission check before executing — never treat a confident
+  Jev answer alone as authorization for a destructive or external action.
 
 Routing targets:
 - `opus-self` → do it yourself (architecture, complex/ambiguous debugging,
