@@ -393,14 +393,134 @@ templates/CLAUDE.md                — готовый блок для CLAUDE.md 
 templates/settings.json.example    — project-level settings.json с моделью Opus
 templates/agents/boilerplate-executor.md
 templates/agents/quick-helper.md
-templates/scripts/jev-route.sh     — Jev choice-вопрос: кто исполняет подзадачу
-templates/scripts/jev-gate.sh      — Jev score+noul: гейтинг рискованных вызовов
+templates/scripts/jev-route.sh     — Jev choice-вопрос: кто исполняет подзадачу (bash/WSL/macOS/Linux)
+templates/scripts/jev-gate.sh      — Jev score+noul: гейтинг рискованных вызовов (bash/WSL/macOS/Linux)
+templates/scripts/jev-route.ps1    — то же самое, нативный PowerShell для Windows без WSL
+templates/scripts/jev-gate.ps1     — то же самое, нативный PowerShell для Windows без WSL
 templates/task-example.md          — пример постановки задачи оркестратору
 ```
 
 ---
 
-## 11. Источники
+## 11. Установка Jev — подробно (в общем и отдельно для Windows)
+
+### 11.1 Что вообще нужно, независимо от ОС
+
+1. **Аккаунт и ключ API.** Зайдите на https://thejevai.com, зарегистрируйтесь/войдите, в разделе API keys создайте ключ. Это и есть значение `JEV_API_KEY`.
+   > Сам домен `thejevai.com` недоступен из моей текущей сессии (заблокирован сетевой прокси окружения), поэтому точный путь в интерфейсе (название пунктов меню) я не проверял вживую — но раздел с API-ключами есть у любого такого сервиса, ищите "API keys" / "Developers" в настройках аккаунта.
+2. **Node.js + npm** — нужен, чтобы поставить официальный skill для coding-агентов:
+   ```
+   npx skills add jev-ai/jev-agent-skill
+   ```
+   `npx` идёт в комплекте с Node.js, отдельно ставить не нужно.
+3. **Способ делать HTTPS-запросы** — для собственных скриптов маршрутизации/гейтинга (`jev-route.*`, `jev-gate.*` из `templates/scripts/`): либо `curl` (Linux/macOS/WSL/Git Bash), либо `Invoke-RestMethod` (нативный PowerShell на Windows — в репозитории уже есть готовые `.ps1`-версии, curl не нужен).
+4. **Переменные окружения:**
+   - `JEV_API_KEY` — обязательно;
+   - `JEV_LANGUAGE` — опционально, язык вопросов/ответов (`en`/`ru` и т.д.), по умолчанию можно не задавать.
+5. **Claude Code** уже должен быть установлен (см. раздел 4) — skill `jev-ai/jev-agent-skill` интегрируется именно в него.
+
+Общая последовательность одинакова на любой ОС: получить ключ → поставить Node.js → `npx skills add jev-ai/jev-agent-skill` → выставить `JEV_API_KEY` (и опц. `JEV_LANGUAGE`) в окружении → проверить тестовым вызовом.
+
+### 11.2 Windows — вариант А: WSL2 (рекомендуется)
+
+Самый надёжный путь: внутри WSL2 всё работает так же, как в Linux/macOS-инструкциях выше (bash-скрипты `jev-route.sh`/`jev-gate.sh`, `curl`, `python3` — без адаптаций).
+
+1. **Включить WSL2.** Откройте PowerShell **от имени администратора** и выполните:
+   ```powershell
+   wsl --install
+   ```
+   Это включит нужные компоненты Windows, поставит WSL2 и дистрибутив Ubuntu по умолчанию. Требуется перезагрузка. (Windows 10 версии 2004+ или Windows 11; если `wsl --install` ругается на версию — обновите Windows через "Параметры → Центр обновления".)
+2. После перезагрузки Ubuntu запустится автоматически (или через меню "Пуск → Ubuntu") — задайте UNIX-логин и пароль (свои, не от Windows).
+3. Внутри WSL/Ubuntu поставьте Node.js (через `nvm`, чтобы не зависеть от старой версии в apt):
+   ```bash
+   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+   source ~/.bashrc
+   nvm install --lts
+   node -v && npm -v
+   ```
+4. Python 3 и `curl` в Ubuntu обычно уже установлены; если нет:
+   ```bash
+   sudo apt update && sudo apt install -y python3 curl
+   ```
+5. Поставьте Claude Code внутри WSL (см. официальную инструкцию для актуальной команды установки — на момент написания это npm-пакет, например `npm install -g @anthropic-ai/claude-code`; сверьтесь с текущей документацией Claude Code, если команда не сработает).
+6. Склонируйте репозиторий **внутри WSL** (не в `/mnt/c/...`, если важна скорость файловой системы, хотя `/mnt/c/...` тоже будет работать):
+   ```bash
+   git clone https://github.com/Lightwell-bg/agents_cc_codex.git
+   cd agents_cc_codex
+   ```
+7. Поставьте skill и выставьте ключ:
+   ```bash
+   npx skills add jev-ai/jev-agent-skill
+   echo 'export JEV_API_KEY="ваш-ключ"' >> ~/.bashrc
+   echo 'export JEV_LANGUAGE=ru' >> ~/.bashrc
+   source ~/.bashrc
+   ```
+8. Проверка:
+   ```bash
+   chmod +x templates/scripts/*.sh
+   bash templates/scripts/jev-route.sh "rename a variable in utils.ts"
+   ```
+9. Если параллельно правите файлы из Windows-редактора (VS Code) — установите расширение **WSL** для VS Code и открывайте папку командой `code .` прямо из терминала WSL внутри клонированной папки: VS Code подключится к WSL-окружению, а редактируете вы всё равно в привычном Windows-интерфейсе.
+
+### 11.3 Windows — вариант Б: нативно, без WSL (PowerShell)
+
+Если WSL ставить не хочется — используйте `.ps1`-версии скриптов, которые уже лежат в `templates/scripts/` (`jev-route.ps1`, `jev-gate.ps1`) и не требуют ни `curl`, ни `python3`.
+
+1. **Node.js для Windows.** Скачайте LTS-инсталлятор с https://nodejs.org, поставьте с настройками по умолчанию (галочка "Add to PATH" уже включена). Проверьте в новом окне PowerShell:
+   ```powershell
+   node -v
+   npm -v
+   ```
+2. **Git для Windows** (нужен для `git clone`/`git pull`/`git push`, если ещё не ставили) — https://git-scm.com/download/win.
+3. **Клонировать репозиторий:**
+   ```powershell
+   cd C:\Users\ВашеИмя\Projects
+   git clone https://github.com/Lightwell-bg/agents_cc_codex.git
+   cd agents_cc_codex
+   ```
+4. **Поставить skill:**
+   ```powershell
+   npx skills add jev-ai/jev-agent-skill
+   ```
+5. **Выставить переменные окружения.** Два варианта:
+   - Только на текущую сессию PowerShell:
+     ```powershell
+     $env:JEV_API_KEY = "ваш-ключ"
+     $env:JEV_LANGUAGE = "ru"
+     ```
+   - Постоянно (сохранится между перезапусками терминала/компьютера):
+     ```powershell
+     setx JEV_API_KEY "ваш-ключ"
+     setx JEV_LANGUAGE "ru"
+     ```
+     После `setx` откройте **новое** окно PowerShell — в уже открытом переменная не появится.
+6. **Разрешить запуск `.ps1`-скриптов** (по умолчанию Windows блокирует запуск непод­писанных PowerShell-скриптов):
+   ```powershell
+   Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+   ```
+   Скажет "Да" на подтверждение — это разрешает запуск локальных скриптов только для вашего пользователя, безопасно для личной машины. Альтернатива без изменения политики глобально — запускать каждый раз с обходом:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\templates\scripts\jev-route.ps1 "rename a variable in utils.ts"
+   ```
+7. **Проверка:**
+   ```powershell
+   .\templates\scripts\jev-route.ps1 "rename a variable in utils.ts"
+   .\templates\scripts\jev-gate.ps1 -ProposedArguments "rm -rf build/" -ToolName "Bash"
+   ```
+   Ожидается JSON-ответ от Jev (route/risk/needs_human_review) без ошибок авторизации.
+
+### 11.4 Частые проблемы на Windows
+
+- **`wsl --install` ничего не делает / ошибка версии.** Обновите Windows до актуальной версии через "Параметры → Центр обновления Windows", затем повторите. Также нужна включённая виртуализация в BIOS/UEFI (на большинстве современных ПК включена по умолчанию).
+- **`node`/`npm` не найден после установки.** Установщик Node.js меняет PATH только для новых окон терминала — закройте и заново откройте PowerShell/терминал VS Code.
+- **`Invoke-RestMethod`/`curl` в PowerShell ведут себя странно.** В Windows PowerShell (не PowerShell 7+) `curl` — это алиас на `Invoke-WebRequest`, а не настоящий curl, и синтаксис флагов другой. Используйте готовые `.ps1`-скрипты из этого репозитория (`Invoke-RestMethod`) вместо ручного набора `curl`-команд из bash-примеров — они для разных сред не взаимозаменяемы 1-в-1.
+- **Скрипт `.ps1` не запускается: "cannot be loaded because running scripts is disabled".** Это `ExecutionPolicy` — см. шаг 6 в 11.3 (`Set-ExecutionPolicy` или запуск через `-ExecutionPolicy Bypass`).
+- **`JEV_API_KEY` не подхватывается.** Через `$env:JEV_API_KEY = "..."` переменная живёт только в текущем окне терминала — закрыли окно, потеряли значение. Для постоянного значения нужен `setx` (и новое окно после него), либо задавайте `$env:JEV_API_KEY` в начале каждой сессии/в профиле PowerShell (`$PROFILE`).
+- **Антивирус/корпоративный прокси блокирует `npm install`/`npx`.** Частая история на корпоративных Windows-машинах — проверьте настройки прокси в `npm config`, либо согласуйте с администратором сети доступ к `registry.npmjs.org`.
+
+---
+
+## 12. Источники
 
 Первичный источник по API и принципам (используйте как основной ориентир):
 
