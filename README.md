@@ -325,6 +325,9 @@ ones should default to delegation too. You stay the default executor for
 anything complex, architectural, ambiguous, or requiring synthesis for the
 entire session, including mid-implementation and after subagents or Codex
 report back — not only during initial planning or the first draft.
+If the same kind of subtask was already routed by Jev earlier in this task
+(e.g. "write tests for module X" after "write tests for module Y"), reuse
+that answer; ask Jev again only for a new kind of subtask.
 
 Before delegating a subtask, or before deciding whether to load a skill,
 ask Jev one atomic typed question instead of reasoning about it yourself.
@@ -366,6 +369,12 @@ specific error, the matching paths) — never ask it to hand you raw logs or
 a raw transcript, and never re-run the same check yourself "just to see."
 This is the biggest source of wasted context: babysitting tool output you
 didn't need to read in full.
+
+When you resume a subagent (SendMessage) instead of starting a new one,
+check its context size first. Once it passes ~150k tokens, start a fresh
+agent with a short brief (goal, files, what is already done) instead:
+every step of a resumed agent re-reads its whole context, so a 500k-token
+agent costs far more per step than a fresh one that re-reads a few files.
 
 Codex is a REVIEWER, not a peer or co-executor, and it runs exactly ONCE
 per task: a single final review after the whole implementation is done and
@@ -457,6 +466,8 @@ claude doctor                              # версия, автообновл�
 - **Несовпадение имён сабагентов.** В `CLAUDE.md` и в `jev-route.sh` должны быть ровно те имена, что в `name:` файлов сабагентов (`ojc-boilerplate-executor`, `ojc-quick-helper`). Разошлись — оркестратор либо не найдёт агента, либо Jev-маршрутизация укажет на несуществующую цель.
 - **Скрипты вызываются по пути внутри клона репозитория (`templates/scripts/...`), а не по глобальному пути.** `CLAUDE.md` копируется в любой проект и должен работать из любого проекта — если скрипты не скопированы в `~/.claude/scripts/ojc/` (раздел 4.4) и `CLAUDE.md` в другом проекте всё ещё ссылается на `templates/scripts/...`, вызов упадёт с "файл не найден", потому что такого пути там просто нет.
 - **Codex запускается много раз (после каждого раунда исправлений).** Это дорого: в реальном прогоне 4 раунда ревью съели ≈2.9 млн токенов контекста Codex и ~13 минут. По правилу ревью одно — финальное; исправления по его замечаниям Opus проверяет тестами, а не повторным ревью. Второй запуск — только если вы сами попросили.
+- **Изменили `CLAUDE.md`, а модель работает по-старому.** Claude Code читает `CLAUDE.md` один раз, при старте сессии. Правки в середине работы до уже запущенной сессии не доходят. После обновления `CLAUDE.md` начните новую сессию (или `/clear`). В реальном прогоне правило «Codex один раз» добавили посреди сессии, и на следующем этапе Codex всё равно отработал 3 раунда.
+- **Субагент, которого много раз дозапускают, раздувается.** В реальном прогоне агент тестов после 6 дозапусков дошёл до ≈506 тыс. токенов контекста, и каждый его шаг перечитывает весь этот объём. По правилу после ~150 тыс. нужен свежий агент с коротким брифом.
 - **Codex используется как peer, а не ревьюер.** Если случайно начать звать `/codex:rescue` вместо `/codex:review` — вы вернётесь к peer-схеме и потеряете смысл разделения ролей из этого документа.
 - **Забыли `/reload-plugins`** после установки плагина Codex — без этого шага `/codex:*` команды не появятся.
 - **Нет `JEV_API_KEY`** — `jev-agent-skill`, `jev-route.sh` и `jev-gate.sh` откажут с ошибкой авторизации. Переменная должна быть в окружении именно той сессии/терминала, откуда стартует Claude Code.

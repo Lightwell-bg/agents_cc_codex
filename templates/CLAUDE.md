@@ -12,6 +12,9 @@ ones should default to delegation too. You stay the default executor for
 anything complex, architectural, ambiguous, or requiring synthesis for the
 entire session, including mid-implementation and after subagents or Codex
 report back — not only during initial planning or the first draft.
+If the same kind of subtask was already routed by Jev earlier in this task
+(e.g. "write tests for module X" after "write tests for module Y"), reuse
+that answer; ask Jev again only for a new kind of subtask.
 
 Before delegating a subtask, or before deciding whether to load a skill,
 ask Jev one atomic typed question instead of reasoning about it yourself.
@@ -53,6 +56,12 @@ specific error, the matching paths) — never ask it to hand you raw logs or
 a raw transcript, and never re-run the same check yourself "just to see."
 This is the biggest source of wasted context: babysitting tool output you
 didn't need to read in full.
+
+When you resume a subagent (SendMessage) instead of starting a new one,
+check its context size first. Once it passes ~150k tokens, start a fresh
+agent with a short brief (goal, files, what is already done) instead:
+every step of a resumed agent re-reads its whole context, so a 500k-token
+agent costs far more per step than a fresh one that re-reads a few files.
 
 Codex is a REVIEWER, not a peer or co-executor, and it runs exactly ONCE
 per task: a single final review after the whole implementation is done and
