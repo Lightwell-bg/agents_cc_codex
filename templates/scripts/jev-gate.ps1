@@ -12,32 +12,18 @@
     5. execute with an idempotency key + audit log
 
   Jev never authorizes the action by itself. For destructive or external
-  actions, require agreement from several controls (this score/noul answer
-  AND the deterministic allowlist/permission check), not a single
+  actions, require agreement from several controls, not a single
   probability threshold.
 
-  NOTE: endpoint/model/shape per the vendor guide. Verify exact response
-  field names against https://thejevai.com/docs before relying on this in
-  production.
+  Provider selection: same as jev-route.ps1 (JEV_PROVIDER, or auto by key).
 
-.PARAMETER ProposedArguments
-  The proposed command or arguments for the tool call.
-
-.PARAMETER ToolName
-  Name of the tool being gated (e.g. "Bash", "Write").
+  Format verified live against OpenRouter System One: "score" takes
+  "criteria" as an ordered array of levels, "noul" takes only
+  "instructions". Answers: answers.risk = {type, score, confidence},
+  answers.needs_human_review = {type, noul}.
 
 .EXAMPLE
-  # Direct TypeSafe access (default)
-  $env:JEV_API_KEY = "..."
-  .\jev-gate.ps1 -ProposedArguments "rm -rf build/" -ToolName "Bash"
-
-.EXAMPLE
-  # Via an OpenRouter key instead — see README §11.5. Unverified in this
-  # repo's own session (openrouter.ai was unreachable); confirm the path
-  # and model slug at https://openrouter.ai/typesafe before relying on it.
-  $env:JEV_PROVIDER = "openrouter"
-  $env:OPENROUTER_API_KEY = "sk-or-v1-..."
-  .\jev-gate.ps1 -ProposedArguments "rm -rf build/" -ToolName "Bash"
+  & "$HOME\.claude\scripts\ojc\jev-gate.ps1" -ProposedArguments "rm -rf build/" -ToolName "Bash"
 #>
 param(
     [Parameter(Mandatory = $true, Position = 0)]
@@ -47,13 +33,17 @@ param(
     [string]$ToolName
 )
 
-$provider = if ($env:JEV_PROVIDER) { $env:JEV_PROVIDER } else { "direct" }
 $language = if ($env:JEV_LANGUAGE) { $env:JEV_LANGUAGE } else { "en" }
+
+$provider = $env:JEV_PROVIDER
+if (-not $provider) {
+    $provider = if ($env:OPENROUTER_API_KEY -and -not $env:JEV_API_KEY) { "openrouter" } else { "direct" }
+}
 
 switch ($provider) {
     "direct" {
         if (-not $env:JEV_API_KEY) {
-            Write-Error "Set JEV_API_KEY first, e.g.: `$env:JEV_API_KEY = 'your-key'"
+            Write-Error "Set JEV_API_KEY (or OPENROUTER_API_KEY with JEV_PROVIDER=openrouter)"
             exit 1
         }
         $jevUrl     = "https://thejevai.com/v1/systemone"
@@ -62,7 +52,7 @@ switch ($provider) {
     }
     "openrouter" {
         if (-not $env:OPENROUTER_API_KEY) {
-            Write-Error "Set OPENROUTER_API_KEY first, e.g.: `$env:OPENROUTER_API_KEY = 'sk-or-v1-...'"
+            Write-Error "Set OPENROUTER_API_KEY"
             exit 1
         }
         $jevUrl     = "https://openrouter.ai/api/v1/systemone"
@@ -75,40 +65,39 @@ switch ($provider) {
     }
 }
 
-$body = @{
+$body = [ordered]@{
     model     = $jevModel
-    state     = @{
+    state     = [ordered]@{
         proposed_tool      = $ToolName
         proposed_arguments = $ProposedArguments
         language           = $language
     }
-    questions = @{
-        risk               = @{
-            type   = "score"
-            scale  = @("low", "medium", "high", "critical")
-            prompt = "How severe would it be if this tool call executed against unintended state?"
+    questions = [ordered]@{
+        risk               = [ordered]@{
+            type         = "score"
+            instructions = "How severe would it be if this tool call executed against unintended state?"
+            criteria     = @("low", "medium", "high", "critical")
         }
-        needs_human_review = @{
-            type      = "noul"
-            statement = "This tool call should be approved by a human before it runs."
+        needs_human_review = [ordered]@{
+            type         = "noul"
+            instructions = "Should a human approve this tool call before it runs?"
         }
     }
-} | ConvertTo-Json -Depth 6
+} | ConvertTo-Json -Depth 8
 
 try {
     $response = Invoke-RestMethod -Uri $jevUrl `
         -Method Post `
         -Headers @{ Authorization = "Bearer $jevAuthKey" } `
-        -ContentType "application/json" `
-        -Body $body
+        -ContentType "application/json; charset=utf-8" `
+        -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
 }
 catch {
     Write-Error "Jev request failed: $($_.Exception.Message)"
     exit 1
 }
 
-$response | ConvertTo-Json -Depth 6
+$response | ConvertTo-Json -Depth 8
 
 # Caller MUST still apply its own deterministic allowlist/permission check
 # (step 3) and escalate on ambiguity (step 4) before executing (step 5).
-# A confident low-risk answer here is a signal, not a decision.

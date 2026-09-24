@@ -200,32 +200,63 @@ npx skills add jev-ai/jev-agent-skill
 
 **4.4.2 Контракт API**
 
+Формат ниже **проверен живыми вызовами** через OpenRouter (проект `upworksearch`, модуль `upwork_scout/ai.py`). Прямой `thejevai.com` использует тот же System One API, но вживую через него не проверялся.
+
 ```
-POST https://thejevai.com/v1/systemone
-Authorization: Bearer $JEV_API_KEY
+POST https://openrouter.ai/api/v1/systemone        (или https://thejevai.com/v1/systemone)
+Authorization: Bearer $OPENROUTER_API_KEY          (или $JEV_API_KEY)
 Content-Type: application/json
 
 {
-  "model": "jev-latest",
+  "model": "~typesafe/jev-latest",                 (для thejevai.com: "jev-latest")
   "state": { ... минимальный JSON: суть запроса, предлагаемый tool,
               его аргументы, применимая политика, релевантные улики ... },
   "questions": {
-    "<стабильный_ключ_вопроса>": {
-      "type": "choice | score | noul",
-      ... поля вопроса (options для choice, шкала для score, утверждение для noul) ...
+    "route": {
+      "type": "choice",
+      "instructions": "Which executor fits this subtask?",
+      "criteria": { "opus-self": "описание", "ojc-boilerplate-executor": "описание" }
     },
-    "<другой_ключ>": { ... }
+    "risk": {
+      "type": "score",
+      "instructions": "How severe would it be...?",
+      "criteria": ["low", "medium", "high", "critical"]
+    },
+    "needs_human_review": {
+      "type": "noul",
+      "instructions": "Should a human approve this tool call?"
+    }
   }
 }
 ```
+
+Правила полей:
+- текст вопроса передаётся в поле **`instructions`** (поле `prompt` API не принимает → HTTP 400);
+- у `choice` **`criteria`** — объект «вариант → описание»;
+- у `score` **`criteria`** — массив уровней по возрастанию;
+- у `noul` — только `instructions`.
+
+Ответ:
+
+```
+{
+  "answers": {
+    "route":              {"type": "choice", "choice": "opus-self", "probabilities": {"opus-self": 0.97, ...}, "confidence": 0.9},
+    "risk":               {"type": "score", "score": 2, "confidence": 0.8},
+    "needs_human_review": {"type": "noul", "noul": 0.74}
+  },
+  "model": "...",
+  "usage": {"cost": 0.00002}
+}
+```
+
+`score` — индекс уровня из `criteria` (0 = первый), `noul` — вероятность от 0 до 1, `probabilities` — вероятность каждого варианта `choice`.
 
 Важно из документации/статьи:
 - **Каждый вопрос атомарный.** Не "что делать агенту?", а "какой из разрешённых маршрутов подходит?" — вопрос должен соответствовать форме ответа (`choice`/`score`/`noul`), а не быть общим.
 - **`state` — минимальный**, а не весь транскрипт: запрос, предлагаемый tool + аргументы, применимая политика, релевантные улики. Не отправляйте историю чата целиком.
 - **Несколько вопросов к одному `state` считаются параллельно одним вызовом** — так можно получить `route` + `risk` + `needs_human_review` за один HTTP-запрос вместо трёх.
 - **Ключи вопросов держите стабильными** между версиями — иначе логи и метрики (FP/FN, объём ручной проверки) не будут сравнимы.
-
-Точные имена полей ответа (вероятности, формат `choice`/`score`/`noul`) сверяйте с https://thejevai.com/docs — ниже приведена иллюстративная структура запроса/ответа по описанию из статьи, а не гарантированно дословная схема.
 
 > **Альтернативный доступ через OpenRouter-ключ** (без отдельного аккаунта на thejevai.com) — см. подробно раздел 11.5. Коротко: скрипты уже поддерживают переключение `JEV_PROVIDER=openrouter` + `OPENROUTER_API_KEY=...` вместо `JEV_API_KEY`.
 
@@ -235,7 +266,7 @@ Content-Type: application/json
 
 ```bash
 ~/.claude/scripts/ojc/jev-route.sh "rename a variable in utils.ts"
-# → {"answers":{"route":{"choice":"ojc-boilerplate-executor","probability":0.94}}}
+# → {"answers":{"route":{"type":"choice","choice":"ojc-boilerplate-executor","probabilities":{...},"confidence":...}}, ...}
 ```
 
 Оркестратор (Opus) перед делегированием нетривиальной подзадачи вызывает скрипт и:
@@ -271,7 +302,7 @@ Content-Type: application/json
 
 Официальный skill (4.4.1) закрывает и этот случай: атомарный `choice`-вопрос с минимальным `state` (текст запроса + список доступных `name`/`description` из `SKILL.md`) вместо того, чтобы оркестратор держал в контексте описания всех skills. Если нужен отдельный готовый CLI под это — есть сторонний проект [`jev-skill-router`](https://github.com/aleksvega/jev-skill-router) (не проверен напрямую в этой сессии из-за сетевых ограничений, трактуйте как community-инструмент, а не первичный источник).
 
-> **Итог по достоверности:** архитектурные принципы (разделение ролей, атомарные typed-вопросы, минимальный `state`, параллельные вопросы, многоконтрольный гейтинг для деструктивных действий) — из официальной статьи и надёжны. Конкретные имена полей запроса/ответа — сверяйте с https://thejevai.com/docs, это community/vendor-пост, а не спецификация API дословно.
+> **Итог по достоверности:** архитектурные принципы (разделение ролей, атомарные typed-вопросы, минимальный `state`, параллельные вопросы, многоконтрольный гейтинг для деструктивных действий) — из официальной статьи и надёжны. Имена полей запроса/ответа (раздел 4.4.2) проверены живыми вызовами через OpenRouter.
 
 ---
 
@@ -620,7 +651,7 @@ $env:OPENROUTER_API_KEY = "sk-or-v1-..."
 & "$HOME\.claude\scripts\ojc\jev-route.ps1" "rename a variable in utils.ts"
 ```
 
-По умолчанию (`JEV_PROVIDER` не задан = `direct`) скрипты идут напрямую в `thejevai.com` с `JEV_API_KEY`. При `JEV_PROVIDER=openrouter` они идут в `https://openrouter.ai/api/v1/systemone` с `OPENROUTER_API_KEY` и моделью `~typesafe/jev-latest` (можно переопределить точный слаг модели переменной `JEV_MODEL`, например `typesafe/jev-1.13` под конкретную закреплённую версию).
+Если `JEV_PROVIDER` не задан, скрипт выбирает провайдера сам: задан только `OPENROUTER_API_KEY` → OpenRouter, иначе → напрямую `thejevai.com` с `JEV_API_KEY`. То есть при работе через OpenRouter достаточно одной переменной `OPENROUTER_API_KEY`, `JEV_PROVIDER` можно не заводить. При `JEV_PROVIDER=openrouter` они идут в `https://openrouter.ai/api/v1/systemone` с `OPENROUTER_API_KEY` и моделью `~typesafe/jev-latest` (можно переопределить точный слаг модели переменной `JEV_MODEL`, например `typesafe/jev-1.13` под конкретную закреплённую версию).
 
 **Подтверждённые данные с каталога моделей OpenRouter** (https://openrouter.ai/typesafe, проверено читателем этого README напрямую 24.09.2026 — сам openrouter.ai недоступен из моей сессии, поэтому это первичное подтверждение ценно):
 - **`~typesafe/jev-latest`** (обратите внимание на `~` в начале — это часть id, не опечатка) — алиас, всегда указывающий на актуальную модель семейства Jev.
@@ -628,7 +659,7 @@ $env:OPENROUTER_API_KEY = "sk-or-v1-..."
 - Оба: контекст **32K токенов**, цена **$0.042 за 1M входных токенов**, **$0 за выходные токены** (Jev возвращает typed-ответ, а не прозу, поэтому выходных токенов почти нет).
 - Официальная документация модели: https://docs.typesafe.ai/concepts/system-one.
 
-> **Что по-прежнему не проверено вживую.** Слаги моделей выше подтверждены напрямую (спасибо), но сам путь эндпоинта `/api/v1/systemone` на OpenRouter и точный формат его ответа — по-прежнему по описанию из вторичных источников, не проверено мной лично (`openrouter.ai` заблокирован сетевым прокси этой сессии). Если запрос по `/api/v1/systemone` вернёт 404 — на OpenRouter задокументирован рабочий альтернативный путь, **Decisions API** (`POST https://openrouter.ai/api/alpha/decisions`), но у него **другой формат запроса/ответа** (не `{state, questions}` с `choice`/`score`/`noul`, а свой JSON-контракт) — скрипты из этого репозитория под него не заточены, их нужно будет адаптировать отдельно, если решите использовать именно Decisions API. Также стоит попробовать обычный unified-эндпоинт OpenRouter (`https://openrouter.ai/api/v1/chat/completions` с `model: "typesafe/jev-1.13"`) — страница каталога моделей описывает доступ "через unified API", что может означать стандартный chat-completions формат, а не отдельный `/systemone`; если `/api/v1/systemone` не сработает, это следующее, что стоит попробовать.
+> **Проверено вживую.** Эндпоинт `https://openrouter.ai/api/v1/systemone` с моделью `~typesafe/jev-latest` и форматом из раздела 4.4.2 работает: на нём построена AI-оценка в проекте `upworksearch`. Прямой путь через `thejevai.com` вживую не проверялся.
 
 **Когда какой провайдер выбрать:**
 

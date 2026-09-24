@@ -4,44 +4,39 @@
   subtask — the orchestrator itself, or one of the subagents.
 
 .DESCRIPTION
-  Native Windows/PowerShell equivalent of jev-route.sh, for machines without
-  WSL or Git Bash. Jev only ANSWERS the question — it does not decide or
-  execute anything. Apply the answer yourself, with a low-confidence
-  fallback to your own judgement.
+  Native Windows/PowerShell equivalent of jev-route.sh. Jev only ANSWERS
+  the question — it does not decide or execute anything. The calling agent
+  acts on the answer and decides itself when the probability is low.
 
-  NOTE: endpoint, model id and question/state shape follow the vendor's
-  "Jev AI API & AI Agents" guide (POST .../v1/systemone, model jev-latest,
-  {state, questions}). Exact response field names are illustrative — verify
-  against https://thejevai.com/docs before relying on this in production.
+  Provider (JEV_PROVIDER): "openrouter" (OPENROUTER_API_KEY) or "direct"
+  (JEV_API_KEY, thejevai.com). If JEV_PROVIDER is unset, the provider is
+  picked by which key is present (OpenRouter wins if only it is set).
 
-.PARAMETER Task
-  Short description of the subtask to route.
-
-.EXAMPLE
-  # Direct TypeSafe access (default)
-  $env:JEV_API_KEY = "..."
-  .\jev-route.ps1 "rename variable X to Y in utils.ts"
+  Request/response format verified live against OpenRouter System One
+  (POST /api/v1/systemone, model ~typesafe/jev-latest): questions carry
+  "instructions" + "criteria"; for "choice", criteria is an object
+  {option: description}. Answer: answers.route = {type, choice,
+  probabilities, confidence}.
 
 .EXAMPLE
-  # Via an OpenRouter key instead — see README §11.5. Unverified in this
-  # repo's own session (openrouter.ai was unreachable); confirm the path
-  # and model slug at https://openrouter.ai/typesafe before relying on it.
-  $env:JEV_PROVIDER = "openrouter"
-  $env:OPENROUTER_API_KEY = "sk-or-v1-..."
-  .\jev-route.ps1 "rename variable X to Y in utils.ts"
+  & "$HOME\.claude\scripts\ojc\jev-route.ps1" "rename variable X to Y in utils.ts"
 #>
 param(
     [Parameter(Mandatory = $true, Position = 0)]
     [string]$Task
 )
 
-$provider = if ($env:JEV_PROVIDER) { $env:JEV_PROVIDER } else { "direct" }
 $language = if ($env:JEV_LANGUAGE) { $env:JEV_LANGUAGE } else { "en" }
+
+$provider = $env:JEV_PROVIDER
+if (-not $provider) {
+    $provider = if ($env:OPENROUTER_API_KEY -and -not $env:JEV_API_KEY) { "openrouter" } else { "direct" }
+}
 
 switch ($provider) {
     "direct" {
         if (-not $env:JEV_API_KEY) {
-            Write-Error "Set JEV_API_KEY first, e.g.: `$env:JEV_API_KEY = 'your-key'"
+            Write-Error "Set JEV_API_KEY (or OPENROUTER_API_KEY with JEV_PROVIDER=openrouter)"
             exit 1
         }
         $jevUrl     = "https://thejevai.com/v1/systemone"
@@ -50,7 +45,7 @@ switch ($provider) {
     }
     "openrouter" {
         if (-not $env:OPENROUTER_API_KEY) {
-            Write-Error "Set OPENROUTER_API_KEY first, e.g.: `$env:OPENROUTER_API_KEY = 'sk-or-v1-...'"
+            Write-Error "Set OPENROUTER_API_KEY"
             exit 1
         }
         $jevUrl     = "https://openrouter.ai/api/v1/systemone"
@@ -63,31 +58,35 @@ switch ($provider) {
     }
 }
 
-$body = @{
+$body = [ordered]@{
     model     = $jevModel
-    state     = @{
+    state     = [ordered]@{
         request_summary = $Task
-        language         = $language
+        language        = $language
     }
-    questions = @{
-        route = @{
-            type    = "choice"
-            options = @("opus-self", "ojc-boilerplate-executor", "ojc-quick-helper")
-            prompt  = "Which route fits this subtask: opus-self (architecture, complex/ambiguous work, synthesis), ojc-boilerplate-executor (mechanical/routine work), or ojc-quick-helper (trivial/cheap lookups)?"
+    questions = [ordered]@{
+        route = [ordered]@{
+            type         = "choice"
+            instructions = "Which executor fits this subtask?"
+            criteria     = [ordered]@{
+                "opus-self"                = "Architecture, complex or ambiguous work, debugging, algorithm design, synthesis"
+                "ojc-boilerplate-executor" = "Mechanical or routine work: boilerplate, tests, formatting, running builds/tests/linters"
+                "ojc-quick-helper"         = "Trivial, cheap lookup or one-line edit"
+            }
         }
     }
-} | ConvertTo-Json -Depth 6
+} | ConvertTo-Json -Depth 8
 
 try {
     $response = Invoke-RestMethod -Uri $jevUrl `
         -Method Post `
         -Headers @{ Authorization = "Bearer $jevAuthKey" } `
-        -ContentType "application/json" `
-        -Body $body
+        -ContentType "application/json; charset=utf-8" `
+        -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
 }
 catch {
     Write-Error "Jev request failed: $($_.Exception.Message)"
     exit 1
 }
 
-$response | ConvertTo-Json -Depth 6
+$response | ConvertTo-Json -Depth 8

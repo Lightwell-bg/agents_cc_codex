@@ -3,26 +3,21 @@
 # subtask — the orchestrator itself, or one of the subagents.
 #
 # Jev only ANSWERS the question. It does not decide or execute anything —
-# this script (and, above it, the calling agent) is what actually acts on
-# the answer, with a low-confidence fallback to human/self judgement.
+# the calling agent acts on the answer, and decides itself when the
+# probability is low.
 #
-# Usage (direct TypeSafe access, default):
-#   JEV_API_KEY=... ./jev-route.sh "rename variable X to Y in utils.ts"
+# Usage:
+#   ~/.claude/scripts/ojc/jev-route.sh "rename variable X to Y in utils.ts"
 #
-# Usage (via an OpenRouter key instead — see README §11.5):
-#   JEV_PROVIDER=openrouter OPENROUTER_API_KEY=sk-or-v1-... \
-#     ./jev-route.sh "rename variable X to Y in utils.ts"
+# Provider (JEV_PROVIDER): "openrouter" (OPENROUTER_API_KEY) or "direct"
+# (JEV_API_KEY, thejevai.com). If JEV_PROVIDER is unset, the provider is
+# picked by which key is present (OpenRouter wins if only it is set).
 #
-# NOTE: this uses the endpoint, model id and question/state shape described
-# in the vendor's "Jev AI API & AI Agents" guide (POST .../v1/systemone,
-# model jev-latest, {state, questions}). The exact response field names are
-# illustrative — verify against https://thejevai.com/docs before relying on
-# this in production; APIs like this version faster than local scripts do.
-# The OpenRouter path/model slug below is unverified in this repo's own
-# session (openrouter.ai was unreachable) — confirm against
-# https://openrouter.ai/typesafe and https://openrouter.ai/docs/guides/community/jev.
-# If it 404s, OpenRouter's separate Decisions API (POST /api/alpha/decisions)
-# is a documented working alternative but uses a different wire format.
+# Request/response format verified live against OpenRouter System One
+# (POST /api/v1/systemone, model ~typesafe/jev-latest): questions carry
+# "instructions" + "criteria"; for "choice", criteria is an object
+# {option: description}. The answer comes back as
+#   {"answers":{"route":{"type":"choice","choice":"...","probabilities":{...},"confidence":...}}, ...}
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
@@ -31,12 +26,20 @@ if [[ $# -lt 1 ]]; then
 fi
 
 TASK="$1"
-PROVIDER="${JEV_PROVIDER:-direct}"
 LANG_HINT="${JEV_LANGUAGE:-en}"
+
+PROVIDER="${JEV_PROVIDER:-}"
+if [[ -z "$PROVIDER" ]]; then
+  if [[ -n "${OPENROUTER_API_KEY:-}" && -z "${JEV_API_KEY:-}" ]]; then
+    PROVIDER=openrouter
+  else
+    PROVIDER=direct
+  fi
+fi
 
 case "$PROVIDER" in
   direct)
-    : "${JEV_API_KEY:?set JEV_API_KEY}"
+    : "${JEV_API_KEY:?set JEV_API_KEY (or OPENROUTER_API_KEY with JEV_PROVIDER=openrouter)}"
     JEV_URL="https://thejevai.com/v1/systemone"
     JEV_AUTH_KEY="$JEV_API_KEY"
     JEV_MODEL="${JEV_MODEL:-jev-latest}"
@@ -53,24 +56,29 @@ case "$PROVIDER" in
     ;;
 esac
 
-STATE_JSON=$(python3 - "$TASK" "$LANG_HINT" <<'PY'
+BODY=$(python3 - "$JEV_MODEL" "$TASK" "$LANG_HINT" <<'PY'
 import json, sys
-task, lang = sys.argv[1], sys.argv[2]
-print(json.dumps({"request_summary": task, "language": lang}))
+model, task, lang = sys.argv[1:4]
+print(json.dumps({
+    "model": model,
+    "state": {"request_summary": task, "language": lang},
+    "questions": {
+        "route": {
+            "type": "choice",
+            "instructions": "Which executor fits this subtask?",
+            "criteria": {
+                "opus-self": "Architecture, complex or ambiguous work, debugging, algorithm design, synthesis",
+                "ojc-boilerplate-executor": "Mechanical or routine work: boilerplate, tests, formatting, running builds/tests/linters",
+                "ojc-quick-helper": "Trivial, cheap lookup or one-line edit",
+            },
+        }
+    },
+}))
 PY
 )
 
 curl -sS "$JEV_URL" \
   -H "Authorization: Bearer ${JEV_AUTH_KEY}" \
   -H "Content-Type: application/json" \
-  -d "{
-    \"model\": \"${JEV_MODEL}\",
-    \"state\": ${STATE_JSON},
-    \"questions\": {
-      \"route\": {
-        \"type\": \"choice\",
-        \"options\": [\"opus-self\", \"ojc-boilerplate-executor\", \"ojc-quick-helper\"],
-        \"prompt\": \"Which route fits this subtask: opus-self (architecture, complex/ambiguous work, synthesis), ojc-boilerplate-executor (mechanical/routine work), or ojc-quick-helper (trivial/cheap lookups)?\"
-      }
-    }
-  }"
+  -d "$BODY"
+echo
