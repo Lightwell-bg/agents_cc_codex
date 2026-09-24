@@ -616,19 +616,22 @@ $env:OPENROUTER_API_KEY = "sk-or-v1-..."
 & "$HOME\.claude\scripts\ojc\jev-route.ps1" "rename a variable in utils.ts"
 ```
 
-По умолчанию (`JEV_PROVIDER` не задан = `direct`) скрипты идут напрямую в `thejevai.com` с `JEV_API_KEY`. При `JEV_PROVIDER=openrouter` они идут в `https://openrouter.ai/api/v1/systemone` с `OPENROUTER_API_KEY` и моделью `typesafe/jev-latest` (можно переопределить точный слаг модели переменной `JEV_MODEL`, например `typesafe/jev-1.13` под конкретную закреплённую версию).
+По умолчанию (`JEV_PROVIDER` не задан = `direct`) скрипты идут напрямую в `thejevai.com` с `JEV_API_KEY`. При `JEV_PROVIDER=openrouter` они идут в `https://openrouter.ai/api/v1/systemone` с `OPENROUTER_API_KEY` и моделью `~typesafe/jev-latest` (можно переопределить точный слаг модели переменной `JEV_MODEL`, например `typesafe/jev-1.13` под конкретную закреплённую версию).
 
-> **Важная оговорка по достоверности.** `openrouter.ai` был недоступен из моей текущей сессии (заблокирован сетевой прокси окружения), поэтому путь `/api/v1/systemone` и слаг модели `typesafe/jev-latest` я не проверял вживую — это по описанию из вторичных источников ("OpenRouter serves Jev... at `/api/v1/systemone` or `/api/alpha/decisions`, different wire formats"). Перед боевым использованием:
-> 1. Откройте https://openrouter.ai/typesafe — там актуальный список моделей Jev и их точные id (например `typesafe/jev-1.13` или `~typesafe/jev-latest`).
-> 2. Сверьтесь с https://openrouter.ai/docs/guides/community/jev на предмет точного пути эндпоинта и формата ответа.
-> 3. Если `/api/v1/systemone` вернёт 404 — на OpenRouter задокументирован рабочий альтернативный путь, **Decisions API** (`POST https://openrouter.ai/api/alpha/decisions`), но у него **другой формат запроса/ответа** (не `{state, questions}` с `choice`/`score`/`noul`, а свой JSON-контракт) — скрипты из этого репозитория под него не заточены, их нужно будет адаптировать отдельно, если решите использовать именно Decisions API.
+**Подтверждённые данные с каталога моделей OpenRouter** (https://openrouter.ai/typesafe, проверено читателем этого README напрямую 24.09.2026 — сам openrouter.ai недоступен из моей сессии, поэтому это первичное подтверждение ценно):
+- **`~typesafe/jev-latest`** (обратите внимание на `~` в начале — это часть id, не опечатка) — алиас, всегда указывающий на актуальную модель семейства Jev.
+- **`typesafe/jev-1.13`** — конкретная закреплённая версия (без `~`).
+- Оба: контекст **32K токенов**, цена **$0.042 за 1M входных токенов**, **$0 за выходные токены** (Jev возвращает typed-ответ, а не прозу, поэтому выходных токенов почти нет).
+- Официальная документация модели: https://docs.typesafe.ai/concepts/system-one.
+
+> **Что по-прежнему не проверено вживую.** Слаги моделей выше подтверждены напрямую (спасибо), но сам путь эндпоинта `/api/v1/systemone` на OpenRouter и точный формат его ответа — по-прежнему по описанию из вторичных источников, не проверено мной лично (`openrouter.ai` заблокирован сетевым прокси этой сессии). Если запрос по `/api/v1/systemone` вернёт 404 — на OpenRouter задокументирован рабочий альтернативный путь, **Decisions API** (`POST https://openrouter.ai/api/alpha/decisions`), но у него **другой формат запроса/ответа** (не `{state, questions}` с `choice`/`score`/`noul`, а свой JSON-контракт) — скрипты из этого репозитория под него не заточены, их нужно будет адаптировать отдельно, если решите использовать именно Decisions API. Также стоит попробовать обычный unified-эндпоинт OpenRouter (`https://openrouter.ai/api/v1/chat/completions` с `model: "typesafe/jev-1.13"`) — страница каталога моделей описывает доступ "через unified API", что может означать стандартный chat-completions формат, а не отдельный `/systemone`; если `/api/v1/systemone` не сработает, это следующее, что стоит попробовать.
 
 **Когда какой провайдер выбрать:**
 
 | Ситуация | Провайдер |
 |---|---|
 | Уже есть/заводите отдельный аккаунт thejevai.com | `direct` (по умолчанию) — самый прямой путь, минимум прослоек |
-| Уже платите за OpenRouter, не хочется второй биллинг | `openrouter` — но сверьте актуальный model id/эндпоинт перед стартом (см. оговорку выше) |
+| Уже платите за OpenRouter, не хочется второй биллинг | `openrouter` — model id подтверждён (`~typesafe/jev-latest` / `typesafe/jev-1.13`), но сверьте путь эндпоинта перед стартом (см. оговорку выше) |
 | Нужна привязка к конкретной версии модели, а не "latest" | Задайте `JEV_MODEL` явно (например `jev-1.13` для `direct` или `typesafe/jev-1.13` для `openrouter`) |
 
 ### 11.6 Хранение ключей Jev на Windows — пошагово

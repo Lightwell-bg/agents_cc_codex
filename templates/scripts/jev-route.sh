@@ -45,7 +45,7 @@ case "$PROVIDER" in
     : "${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY}"
     JEV_URL="https://openrouter.ai/api/v1/systemone"
     JEV_AUTH_KEY="$OPENROUTER_API_KEY"
-    JEV_MODEL="${JEV_MODEL:-typesafe/jev-latest}"
+    JEV_MODEL="${JEV_MODEL:-~typesafe/jev-latest}"
     ;;
   *)
     echo "unknown JEV_PROVIDER: $PROVIDER (expected 'direct' or 'openrouter')" >&2

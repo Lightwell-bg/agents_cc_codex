@@ -67,7 +67,7 @@ switch ($provider) {
         }
         $jevUrl     = "https://openrouter.ai/api/v1/systemone"
         $jevAuthKey = $env:OPENROUTER_API_KEY
-        $jevModel   = if ($env:JEV_MODEL) { $env:JEV_MODEL } else { "typesafe/jev-latest" }
+        $jevModel   = if ($env:JEV_MODEL) { $env:JEV_MODEL } else { "~typesafe/jev-latest" }
     }
     default {
         Write-Error "Unknown JEV_PROVIDER: $provider (expected 'direct' or 'openrouter')"
