@@ -13,12 +13,18 @@
 # AND the deterministic allowlist/permission check), not a single
 # probability threshold.
 #
-# Usage:
+# Usage (direct TypeSafe access, default):
 #   JEV_API_KEY=... ./jev-gate.sh "rm -rf build/" "Bash"
+#
+# Usage (via an OpenRouter key instead — see README §11.5):
+#   JEV_PROVIDER=openrouter OPENROUTER_API_KEY=sk-or-v1-... \
+#     ./jev-gate.sh "rm -rf build/" "Bash"
 #
 # NOTE: endpoint/model/shape per the vendor guide (POST .../v1/systemone,
 # model jev-latest). Verify exact response field names against
-# https://thejevai.com/docs before relying on this in production.
+# https://thejevai.com/docs before relying on this in production. The
+# OpenRouter path/model slug is unverified in this repo's own session
+# (openrouter.ai was unreachable) — confirm at https://openrouter.ai/typesafe.
 set -euo pipefail
 
 if [[ $# -lt 2 ]]; then
@@ -28,8 +34,27 @@ fi
 
 ARGS="$1"
 TOOL="$2"
-: "${JEV_API_KEY:?set JEV_API_KEY}"
+PROVIDER="${JEV_PROVIDER:-direct}"
 LANG_HINT="${JEV_LANGUAGE:-en}"
+
+case "$PROVIDER" in
+  direct)
+    : "${JEV_API_KEY:?set JEV_API_KEY}"
+    JEV_URL="https://thejevai.com/v1/systemone"
+    JEV_AUTH_KEY="$JEV_API_KEY"
+    JEV_MODEL="${JEV_MODEL:-jev-latest}"
+    ;;
+  openrouter)
+    : "${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY}"
+    JEV_URL="https://openrouter.ai/api/v1/systemone"
+    JEV_AUTH_KEY="$OPENROUTER_API_KEY"
+    JEV_MODEL="${JEV_MODEL:-typesafe/jev-latest}"
+    ;;
+  *)
+    echo "unknown JEV_PROVIDER: $PROVIDER (expected 'direct' or 'openrouter')" >&2
+    exit 1
+    ;;
+esac
 
 STATE_JSON=$(python3 - "$ARGS" "$TOOL" "$LANG_HINT" <<'PY'
 import json, sys
@@ -43,11 +68,11 @@ PY
 )
 
 # route + risk + human-review computed in one call, against one state
-curl -sS https://thejevai.com/v1/systemone \
-  -H "Authorization: Bearer ${JEV_API_KEY}" \
+curl -sS "$JEV_URL" \
+  -H "Authorization: Bearer ${JEV_AUTH_KEY}" \
   -H "Content-Type: application/json" \
   -d "{
-    \"model\": \"jev-latest\",
+    \"model\": \"${JEV_MODEL}\",
     \"state\": ${STATE_JSON},
     \"questions\": {
       \"risk\": {

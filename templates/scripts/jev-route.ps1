@@ -18,7 +18,16 @@
   Short description of the subtask to route.
 
 .EXAMPLE
+  # Direct TypeSafe access (default)
   $env:JEV_API_KEY = "..."
+  .\jev-route.ps1 "rename variable X to Y in utils.ts"
+
+.EXAMPLE
+  # Via an OpenRouter key instead — see README §11.5. Unverified in this
+  # repo's own session (openrouter.ai was unreachable); confirm the path
+  # and model slug at https://openrouter.ai/typesafe before relying on it.
+  $env:JEV_PROVIDER = "openrouter"
+  $env:OPENROUTER_API_KEY = "sk-or-v1-..."
   .\jev-route.ps1 "rename variable X to Y in utils.ts"
 #>
 param(
@@ -26,15 +35,36 @@ param(
     [string]$Task
 )
 
-if (-not $env:JEV_API_KEY) {
-    Write-Error "Set JEV_API_KEY first, e.g.: `$env:JEV_API_KEY = 'your-key'"
-    exit 1
-}
-
+$provider = if ($env:JEV_PROVIDER) { $env:JEV_PROVIDER } else { "direct" }
 $language = if ($env:JEV_LANGUAGE) { $env:JEV_LANGUAGE } else { "en" }
 
+switch ($provider) {
+    "direct" {
+        if (-not $env:JEV_API_KEY) {
+            Write-Error "Set JEV_API_KEY first, e.g.: `$env:JEV_API_KEY = 'your-key'"
+            exit 1
+        }
+        $jevUrl     = "https://thejevai.com/v1/systemone"
+        $jevAuthKey = $env:JEV_API_KEY
+        $jevModel   = if ($env:JEV_MODEL) { $env:JEV_MODEL } else { "jev-latest" }
+    }
+    "openrouter" {
+        if (-not $env:OPENROUTER_API_KEY) {
+            Write-Error "Set OPENROUTER_API_KEY first, e.g.: `$env:OPENROUTER_API_KEY = 'sk-or-v1-...'"
+            exit 1
+        }
+        $jevUrl     = "https://openrouter.ai/api/v1/systemone"
+        $jevAuthKey = $env:OPENROUTER_API_KEY
+        $jevModel   = if ($env:JEV_MODEL) { $env:JEV_MODEL } else { "typesafe/jev-latest" }
+    }
+    default {
+        Write-Error "Unknown JEV_PROVIDER: $provider (expected 'direct' or 'openrouter')"
+        exit 1
+    }
+}
+
 $body = @{
-    model     = "jev-latest"
+    model     = $jevModel
     state     = @{
         request_summary = $Task
         language         = $language
@@ -49,9 +79,9 @@ $body = @{
 } | ConvertTo-Json -Depth 6
 
 try {
-    $response = Invoke-RestMethod -Uri "https://thejevai.com/v1/systemone" `
+    $response = Invoke-RestMethod -Uri $jevUrl `
         -Method Post `
-        -Headers @{ Authorization = "Bearer $($env:JEV_API_KEY)" } `
+        -Headers @{ Authorization = "Bearer $jevAuthKey" } `
         -ContentType "application/json" `
         -Body $body
 }

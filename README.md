@@ -210,6 +210,8 @@ Content-Type: application/json
 
 Точные имена полей ответа (вероятности, формат `choice`/`score`/`noul`) сверяйте с https://thejevai.com/docs — ниже приведена иллюстративная структура запроса/ответа по описанию из статьи, а не гарантированно дословная схема.
 
+> **Альтернативный доступ через OpenRouter-ключ** (без отдельного аккаунта на thejevai.com) — см. подробно раздел 11.5. Коротко: все скрипты в `templates/scripts/` уже поддерживают переключение `JEV_PROVIDER=openrouter` + `OPENROUTER_API_KEY=...` вместо `JEV_API_KEY`.
+
 **4.4.3 Маршрутизация моделей — `jev-route.sh`**
 
 `templates/scripts/jev-route.sh` — атомарный `choice`-вопрос "кто исполняет подзадачу":
@@ -517,6 +519,48 @@ templates/task-example.md          — пример постановки зад�
 - **Скрипт `.ps1` не запускается: "cannot be loaded because running scripts is disabled".** Это `ExecutionPolicy` — см. шаг 6 в 11.3 (`Set-ExecutionPolicy` или запуск через `-ExecutionPolicy Bypass`).
 - **`JEV_API_KEY` не подхватывается.** Через `$env:JEV_API_KEY = "..."` переменная живёт только в текущем окне терминала — закрыли окно, потеряли значение. Для постоянного значения нужен `setx` (и новое окно после него), либо задавайте `$env:JEV_API_KEY` в начале каждой сессии/в профиле PowerShell (`$PROFILE`).
 - **Антивирус/корпоративный прокси блокирует `npm install`/`npx`.** Частая история на корпоративных Windows-машинах — проверьте настройки прокси в `npm config`, либо согласуйте с администратором сети доступ к `registry.npmjs.org`.
+
+### 11.5 Альтернатива: доступ к Jev через OpenRouter-ключ
+
+Если у вас уже есть аккаунт OpenRouter (используете его для других моделей) и не хочется заводить отдельный ключ на thejevai.com — Jev доступен и через OpenRouter, под тем же принципом typed-вопросов.
+
+**Получить ключ:**
+1. Зайдите на https://openrouter.ai, зарегистрируйтесь/войдите.
+2. Пополните баланс (OpenRouter работает по предоплате/pay-as-you-go — под конкретную модель).
+3. В разделе **Keys** (https://openrouter.ai/keys) создайте API-ключ — он будет в формате `sk-or-v1-...`.
+
+**Как использовать в скриптах из этого репозитория:**
+
+Все скрипты (`jev-route.sh`, `jev-gate.sh`, `jev-route.ps1`, `jev-gate.ps1`) поддерживают переключение провайдера через переменную `JEV_PROVIDER`:
+
+```bash
+# bash / WSL / Git Bash
+export JEV_PROVIDER=openrouter
+export OPENROUTER_API_KEY=sk-or-v1-...
+bash templates/scripts/jev-route.sh "rename a variable in utils.ts"
+```
+
+```powershell
+# PowerShell (Windows)
+$env:JEV_PROVIDER = "openrouter"
+$env:OPENROUTER_API_KEY = "sk-or-v1-..."
+.\templates\scripts\jev-route.ps1 "rename a variable in utils.ts"
+```
+
+По умолчанию (`JEV_PROVIDER` не задан = `direct`) скрипты идут напрямую в `thejevai.com` с `JEV_API_KEY`. При `JEV_PROVIDER=openrouter` они идут в `https://openrouter.ai/api/v1/systemone` с `OPENROUTER_API_KEY` и моделью `typesafe/jev-latest` (можно переопределить точный слаг модели переменной `JEV_MODEL`, например `typesafe/jev-1.13` под конкретную закреплённую версию).
+
+> **Важная оговорка по достоверности.** `openrouter.ai` был недоступен из моей текущей сессии (заблокирован сетевой прокси окружения), поэтому путь `/api/v1/systemone` и слаг модели `typesafe/jev-latest` я не проверял вживую — это по описанию из вторичных источников ("OpenRouter serves Jev... at `/api/v1/systemone` or `/api/alpha/decisions`, different wire formats"). Перед боевым использованием:
+> 1. Откройте https://openrouter.ai/typesafe — там актуальный список моделей Jev и их точные id (например `typesafe/jev-1.13` или `~typesafe/jev-latest`).
+> 2. Сверьтесь с https://openrouter.ai/docs/guides/community/jev на предмет точного пути эндпоинта и формата ответа.
+> 3. Если `/api/v1/systemone` вернёт 404 — на OpenRouter задокументирован рабочий альтернативный путь, **Decisions API** (`POST https://openrouter.ai/api/alpha/decisions`), но у него **другой формат запроса/ответа** (не `{state, questions}` с `choice`/`score`/`noul`, а свой JSON-контракт) — скрипты из этого репозитория под него не заточены, их нужно будет адаптировать отдельно, если решите использовать именно Decisions API.
+
+**Когда какой провайдер выбрать:**
+
+| Ситуация | Провайдер |
+|---|---|
+| Уже есть/заводите отдельный аккаунт thejevai.com | `direct` (по умолчанию) — самый прямой путь, минимум прослоек |
+| Уже платите за OpenRouter, не хочется второй биллинг | `openrouter` — но сверьте актуальный model id/эндпоинт перед стартом (см. оговорку выше) |
+| Нужна привязка к конкретной версии модели, а не "latest" | Задайте `JEV_MODEL` явно (например `jev-1.13` для `direct` или `typesafe/jev-1.13` для `openrouter`) |
 
 ---
 
