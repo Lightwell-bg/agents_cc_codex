@@ -19,7 +19,7 @@ Jev only answers — it never authorizes or executes anything; you (via the
 wrapper script) still enforce the final decision:
 
 - Model routing: `templates/scripts/jev-route.sh "<subtask description>"` —
-  a `choice` question over {opus-self, boilerplate-executor, quick-helper}.
+  a `choice` question over {opus-self, ojc-boilerplate-executor, ojc-quick-helper}.
   Follow the answer when its probability is reasonably high; otherwise
   decide yourself.
 - Skill routing: use the `jev-ai/jev-agent-skill` integration — a `choice`
@@ -34,9 +34,9 @@ wrapper script) still enforce the final decision:
 Routing targets:
 - `opus-self` → do it yourself (architecture, complex/ambiguous debugging,
   algorithm design, synthesis).
-- `boilerplate-executor` → mechanical work: boilerplate, tests, formatting,
+- `ojc-boilerplate-executor` → mechanical work: boilerplate, tests, formatting,
   simple edits, and routine tool babysitting (see below).
-- `quick-helper` → trivial, cheap lookups or one-line edits.
+- `ojc-quick-helper` → trivial, cheap lookups or one-line edits.
 
 Minimize your own raw tool work — not just multi-step subtasks. Before you
 run a tool call yourself, ask: does interpreting its result require your
@@ -45,7 +45,7 @@ whether a design actually works), or is it mechanical/verification work
 with a deterministic expected outcome (running tests/lint/build, grepping
 or listing the codebase, re-checking something already verified, collecting
 and formatting output)? Judgment → do it yourself. Mechanical/verification,
-however small → delegate to `boilerplate-executor`, even mid-task, even for
+however small → delegate to `ojc-boilerplate-executor`, even mid-task, even for
 a single command. Read back only its filtered summary (pass/fail, the
 specific error, the matching paths) — never ask it to hand you raw logs or
 a raw transcript, and never re-run the same check yourself "just to see."

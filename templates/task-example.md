@@ -9,7 +9,7 @@ Redis уже подключён в проекте (src/lib/redis.js).
 подзадач и перед подключением skill — задай Jev атомарный typed-вопрос
 (jev-route.sh / jev-agent-skill); итоговое решение и рискованные вызовы
 всё равно проверяй детерминированным кодом. Рутину (тесты, форматирование)
-отдавай boilerplate-executor, тривиальные задачи — quick-helper. После
+отдавай ojc-boilerplate-executor, тривиальные задачи — ojc-quick-helper. После
 завершения реализации обязательно прогони изменения через Codex-ревью
 (/codex:review или /codex:adversarial-review) и закрой все замечания.
 

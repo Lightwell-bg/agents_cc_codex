@@ -69,8 +69,8 @@ curl -sS "$JEV_URL" \
     \"questions\": {
       \"route\": {
         \"type\": \"choice\",
-        \"options\": [\"opus-self\", \"boilerplate-executor\", \"quick-helper\"],
-        \"prompt\": \"Which route fits this subtask: opus-self (architecture, complex/ambiguous work, synthesis), boilerplate-executor (mechanical/routine work), or quick-helper (trivial/cheap lookups)?\"
+        \"options\": [\"opus-self\", \"ojc-boilerplate-executor\", \"ojc-quick-helper\"],
+        \"prompt\": \"Which route fits this subtask: opus-self (architecture, complex/ambiguous work, synthesis), ojc-boilerplate-executor (mechanical/routine work), or ojc-quick-helper (trivial/cheap lookups)?\"
       }
     }
   }"

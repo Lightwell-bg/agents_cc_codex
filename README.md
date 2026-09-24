@@ -32,8 +32,8 @@ flowchart TD
     CODE -->|"route: кто исполняет"| ROUTE{"Кто делает подзадачу?"}
 
     ROUTE -->|"архитектура, сложный баг,<br/>синтез — Opus сам"| O
-    ROUTE -->|"рутина, шаблонный код,<br/>тесты, форматирование"| B["boilerplate-executor<br/>(Sonnet, сабагент)"]
-    ROUTE -->|"тривиальные, дешёвые задачи"| Q["quick-helper<br/>(Haiku, сабагент, опционально)"]
+    ROUTE -->|"рутина, шаблонный код,<br/>тесты, форматирование"| B["ojc-boilerplate-executor<br/>(Sonnet, сабагент)"]
+    ROUTE -->|"тривиальные, дешёвые задачи"| Q["ojc-quick-helper<br/>(Haiku, сабагент, опционально)"]
 
     B --> O
     Q --> O
@@ -62,13 +62,13 @@ flowchart TD
 | Роль | Модель | Где живёт | Задача |
 |---|---|---|---|
 | Оркестратор + главный исполнитель | **Opus**, последняя версия (например `claude-opus-5-5` — сверяйте актуальный id через `/model`) | основная сессия | Планирует, декомпозирует, **сам делает** архитектурно значимую / сложную / неоднозначную работу, синтезирует финальный результат |
-| `boilerplate-executor` | Sonnet | сабагент, `~/.claude/agents/` | Шаблонный код, тесты, форматирование, механические правки + рутинная возня с инструментами (прогон тестов/линтера/сборки, поиск по коду) — возвращает Opus только отфильтрованный вывод, не сырые логи |
-| `quick-helper` (опционально) | Haiku | сабагент, `~/.claude/agents/` | Тривиальные дешёвые задачи: поиск по коду, короткие однострочные правки, суммаризация |
+| `ojc-boilerplate-executor` | Sonnet | сабагент, `~/.claude/agents/` | Шаблонный код, тесты, форматирование, механические правки + рутинная возня с инструментами (прогон тестов/линтера/сборки, поиск по коду) — возвращает Opus только отфильтрованный вывод, не сырые логи |
+| `ojc-quick-helper` (опционально) | Haiku | сабагент, `~/.claude/agents/` | Тривиальные дешёвые задачи: поиск по коду, короткие однострочные правки, суммаризация |
 | Codex | внешний движок OpenAI, плагин `codex` для Claude Code | `/codex:review`, `/codex:adversarial-review` | **Только ревью** готовых изменений Opus — независимый взгляд, поиск багов/уязвимостей/упущений. Не пишет код, не равноправный соисполнитель |
 | Jev | `jev-latest` — API `thejevai.com` (System One, typed decision model) | skill `jev-ai/jev-agent-skill` (`npx skills add`) + скрипты `templates/scripts/jev-route.sh`, `templates/scripts/jev-gate.sh` | Отвечает на узкие типизированные вопросы о текущем состоянии — не выполняет действия и не авторизует их сам |
 
 > **Разделение ролей — ключевой принцип Jev.** LLM (Opus/Sonnet/Haiku) планирует, пишет код, рассуждает. Jev **не генерирует текст** — он отвечает на atomic typed-вопросы трёх видов:
-> - `choice` — выбор одного варианта из заданного набора (роутинг: opus-self / boilerplate-executor / quick-helper; proceed / confirm / reject);
+> - `choice` — выбор одного варианта из заданного набора (роутинг: opus-self / ojc-boilerplate-executor / ojc-quick-helper; proceed / confirm / reject);
 > - `score` — упорядоченная шкала `low → critical` (приоритет, серьёзность);
 > - `noul` — вероятность, что конкретное утверждение истинно (например, «нужен ли человек для этого вызова?»).
 >
@@ -112,27 +112,27 @@ claude doctor
 
 ```bash
 mkdir -p ~/.claude/agents
-cp templates/agents/boilerplate-executor.md ~/.claude/agents/
-cp templates/agents/quick-helper.md ~/.claude/agents/
+cp templates/agents/ojc-boilerplate-executor.md ~/.claude/agents/
+cp templates/agents/ojc-quick-helper.md ~/.claude/agents/
 ```
 
-Формат файла — Markdown с YAML frontmatter:
+Полное актуальное содержимое — в `templates/agents/ojc-boilerplate-executor.md` и `templates/agents/ojc-quick-helper.md`; формат — Markdown с YAML frontmatter, например:
 
 ```markdown
 ---
-name: boilerplate-executor
+name: ojc-boilerplate-executor
 description: Use for mechanical tasks, boilerplate, tests, formatting, simple
-  edits. Execute efficiently, without unnecessary re-reasoning.
+  edits, and routine tool babysitting...
 tools: Read, Write, Edit, Glob, Grep, Bash
 model: sonnet
 ---
 
-You execute clearly-scoped mechanical work delegated by the orchestrator.
-Do not re-plan or re-scope the task — follow the instructions given, produce
-the change, and return a concise summary of what changed.
+You execute clearly-scoped mechanical work delegated by the orchestrator...
 ```
 
 > Проверяйте фактическое `name:` в получившемся файле — Claude Code иногда создаёт агента не под тем именем, которое вы задумали. Если в CLAUDE.md ссылаетесь на агента по имени — оно должно совпадать один в один с `name` во frontmatter.
+
+> **Почему префикс `ojc-`.** Сабагенты живут в `~/.claude/agents/` глобально для всех проектов на машине. Если параллельно используется другая мультиагентная схема (например, Fable-оркестратор из практики "Fable + сабагенты + Codex" — там тоже есть `boilerplate-executor`), общее имя в `~/.claude/agents/` перезапишет или перепутает агента между схемами: одна из них молча начнёт делегировать не туда, либо агент второй схемы перестанет существовать под ожидаемым именем. Префикс `ojc-` (**O**pus + **J**ev + **C**odex) держит имена этой схемы отдельно от любой другой, использующей общие названия вроде `boilerplate-executor`/`quick-helper`/`deep-reasoning-advisor`. Если заводите ещё одну схему на этой же машине — дайте её агентам свой префикс по тому же принципу.
 
 ### 4.3 Codex — как ревьюер, а не соисполнитель
 
@@ -218,12 +218,12 @@ Content-Type: application/json
 
 ```bash
 ./templates/scripts/jev-route.sh "rename a variable in utils.ts"
-# → {"answers":{"route":{"choice":"boilerplate-executor","probability":0.94}}}
+# → {"answers":{"route":{"choice":"ojc-boilerplate-executor","probability":0.94}}}
 ```
 
 Оркестратор (Opus) перед делегированием нетривиальной подзадачи вызывает скрипт и:
 - при низкой уверенности ответа — решает сам, не полагаясь на Jev;
-- иначе следует `choice`: делает сам (`opus-self`) / зовёт `boilerplate-executor` / зовёт `quick-helper`.
+- иначе следует `choice`: делает сам (`opus-self`) / зовёт `ojc-boilerplate-executor` / зовёт `ojc-quick-helper`.
 
 **4.4.4 Гейтинг вызовов инструментов — `jev-gate.sh` и порядок проверок**
 
@@ -284,7 +284,7 @@ Jev only answers — it never authorizes or executes anything; you (via the
 wrapper script) still enforce the final decision:
 
 - Model routing: `templates/scripts/jev-route.sh "<subtask description>"` —
-  a `choice` question over {opus-self, boilerplate-executor, quick-helper}.
+  a `choice` question over {opus-self, ojc-boilerplate-executor, ojc-quick-helper}.
   Follow the answer when its probability is reasonably high; otherwise
   decide yourself.
 - Skill routing: use the `jev-ai/jev-agent-skill` integration — a `choice`
@@ -299,9 +299,9 @@ wrapper script) still enforce the final decision:
 Routing targets:
 - `opus-self` → do it yourself (architecture, complex/ambiguous debugging,
   algorithm design, synthesis).
-- `boilerplate-executor` → mechanical work: boilerplate, tests, formatting,
+- `ojc-boilerplate-executor` → mechanical work: boilerplate, tests, formatting,
   simple edits, and routine tool babysitting (see below).
-- `quick-helper` → trivial, cheap lookups or one-line edits.
+- `ojc-quick-helper` → trivial, cheap lookups or one-line edits.
 
 Minimize your own raw tool work — not just multi-step subtasks. Before you
 run a tool call yourself, ask: does interpreting its result require your
@@ -310,7 +310,7 @@ whether a design actually works), or is it mechanical/verification work
 with a deterministic expected outcome (running tests/lint/build, grepping
 or listing the codebase, re-checking something already verified, collecting
 and formatting output)? Judgment → do it yourself. Mechanical/verification,
-however small → delegate to `boilerplate-executor`, even mid-task, even for
+however small → delegate to `ojc-boilerplate-executor`, even mid-task, even for
 a single command. Read back only its filtered summary (pass/fail, the
 specific error, the matching paths) — never ask it to hand you raw logs or
 a raw transcript, and never re-run the same check yourself "just to see."
@@ -332,7 +332,7 @@ transcripts or tool-call streams.
 
 - Явно сказано, что Opus **и планирует, и делает сам** — иначе модель по инерции начнёт делегировать всё подряд, как в чистой Fable-схеме, и вы потеряете смысл "Opus как главный исполнитель".
 - Отдельно прописано, что маршрутизация **не разовая на старте**: решение "делегировать или делать самому" принимается заново на каждую новую подзадачу в течение всей сессии. Без этой оговорки модель может по инерции решить, что раз в начале что-то делегировала — дальше можно продолжать делегировать всё не глядя, и превратиться в чистого оркестратора после первого черновика. Opus обязан оставаться основным исполнителем сложных/архитектурных кусков **на всём протяжении** работы, а не только в фазе планирования.
-- Добавлена явная эвристика **"raw-возня vs решение, требующее суждения"**: единица делегирования — не только целая подзадача, а любой отдельный вызов инструмента. Если для интерпретации результата не нужно суждение (прогон тестов, grep по коду, повторная проверка) — это уходит в `boilerplate-executor`, даже если это один-единственный вызов посреди работы, и Opus получает обратно только отфильтрованный вердикт, а не сырой лог. Именно тут обычно утекает больше всего контекста дорогой модели впустую — не на "подзадачах", а на пассивном чтении вывода команд, которые сам Opus не обязан был запускать.
+- Добавлена явная эвристика **"raw-возня vs решение, требующее суждения"**: единица делегирования — не только целая подзадача, а любой отдельный вызов инструмента. Если для интерпретации результата не нужно суждение (прогон тестов, grep по коду, повторная проверка) — это уходит в `ojc-boilerplate-executor`, даже если это один-единственный вызов посреди работы, и Opus получает обратно только отфильтрованный вердикт, а не сырой лог. Именно тут обычно утекает больше всего контекста дорогой модели впустую — не на "подзадачах", а на пассивном чтении вывода команд, которые сам Opus не обязан был запускать.
 - Jev поставлен **перед** делегированием и **перед** подключением skill — именно здесь экономится больше всего токенов: атомарный typed-вопрос вместо reasoning дорогой модели над routing/triage.
 - Явно прописано, что **Jev не авторизует действия сам** — итоговое решение и выполнение всегда за детерминированным кодом (allowlist/permission check), особенно для рискованных вызовов. Это прямо из принципа "разделения ролей" в статье: агент предлагает, код проверяет права и исполняет.
 - Codex явно назван **ревьюером**, а не peer — прямая противоположность оригинальной инструкции ("treat as a peer, not a reviewer"). Это осознанное изменение под вашу задачу.
@@ -354,8 +354,8 @@ transcripts or tool-call streams.
 делай сам. Перед делегированием подзадач и перед подключением skill —
 задай Jev атомарный typed-вопрос (jev-route.sh / jev-agent-skill); итоговое
 решение и рискованные вызовы всё равно проверяй детерминированным кодом,
-не полагайся на один ответ Jev. Рутину отдавай boilerplate-executor,
-тривиальные задачи — quick-helper. После завершения реализации обязательно
+не полагайся на один ответ Jev. Рутину отдавай ojc-boilerplate-executor,
+тривиальные задачи — ojc-quick-helper. После завершения реализации обязательно
 прогони изменения через Codex-ревью (/codex:review или
 /codex:adversarial-review) и закрой все замечания.
 
@@ -371,9 +371,9 @@ transcripts or tool-call streams.
 | Ситуация | Что делать | Почему |
 |---|---|---|
 | Планирование, декомпозиция, синтез нескольких направлений, архитектурное решение | Opus сам, `/effort max` только на этой фазе | Здесь нужна дорогая модель — платите только тут |
-| Механическая правка, шаблон, тест, форматирование | Jev → `boilerplate-executor` (Sonnet) | Дешёвая модель справляется не хуже, а стоит на порядок меньше |
-| Прогон тестов/линтера/сборки, поиск/листинг по коду, повторная проверка уже проверенного | `boilerplate-executor`, даже для одной команды посреди работы; Opus читает только вердикт | Сырой вывод команд — самый частый источник бесполезно потраченного контекста дорогой модели |
-| Тривиальный точечный вопрос / поиск / однострочная правка | Jev → `quick-helper` (Haiku) | Самая дешёвая модель, достаточно для простого случая |
+| Механическая правка, шаблон, тест, форматирование | Jev → `ojc-boilerplate-executor` (Sonnet) | Дешёвая модель справляется не хуже, а стоит на порядок меньше |
+| Прогон тестов/линтера/сборки, поиск/листинг по коду, повторная проверка уже проверенного | `ojc-boilerplate-executor`, даже для одной команды посреди работы; Opus читает только вердикт | Сырой вывод команд — самый частый источник бесполезно потраченного контекста дорогой модели |
+| Тривиальный точечный вопрос / поиск / однострочная правка | Jev → `ojc-quick-helper` (Haiku) | Самая дешёвая модель, достаточно для простого случая |
 | "Какой skill подключить?" | Jev `choice`-вопрос (jev-agent-skill) вместо ручного анализа оркестратором | ~0.1–1.5с и типизированный ответ вместо reasoning дорогой модели над списком skills |
 | "Кто исполняет эту подзадачу?" | `jev-route.sh` (`choice`) вместо решения оркестратором "на глаз" | Тот же порядок экономии, структурированный ответ вместо прозы |
 | "Насколько рискован этот вызов инструмента?" | `jev-gate.sh` (`score`+`noul`) + детерминированный allowlist | Быстрый предохранитель до дорогого/необратимого действия, но не единственный контроль |
@@ -388,7 +388,7 @@ transcripts or tool-call streams.
 claude doctor                              # версия, автообновление
 /codex:setup                               # должно быть "Codex is ready"
 bash templates/scripts/jev-route.sh "rename a variable in utils.ts"
-                                            # ожидаем choice: boilerplate-executor
+                                            # ожидаем choice: ojc-boilerplate-executor
 bash templates/scripts/jev-gate.sh "rm -rf build/" "Bash"
                                             # ожидаем высокий score/noul → эскалация
 ```
@@ -399,7 +399,7 @@ bash templates/scripts/jev-gate.sh "rm -rf build/" "Bash"
 
 ## 9. Частые ошибки
 
-- **Несовпадение имён сабагентов.** В `CLAUDE.md` и в `jev-route.sh` должны быть ровно те имена, что в `name:` файлов сабагентов (`boilerplate-executor`, `quick-helper`). Разошлись — оркестратор либо не найдёт агента, либо Jev-маршрутизация укажет на несуществующую цель.
+- **Несовпадение имён сабагентов.** В `CLAUDE.md` и в `jev-route.sh` должны быть ровно те имена, что в `name:` файлов сабагентов (`ojc-boilerplate-executor`, `ojc-quick-helper`). Разошлись — оркестратор либо не найдёт агента, либо Jev-маршрутизация укажет на несуществующую цель.
 - **Codex используется как peer, а не ревьюер.** Если случайно начать звать `/codex:rescue` вместо `/codex:review` — вы вернётесь к peer-схеме и потеряете смысл разделения ролей из этого документа.
 - **Забыли `/reload-plugins`** после установки плагина Codex — без этого шага `/codex:*` команды не появятся.
 - **Нет `JEV_API_KEY`** — `jev-agent-skill`, `jev-route.sh` и `jev-gate.sh` откажут с ошибкой авторизации. Переменная должна быть в окружении именно той сессии/терминала, откуда стартует Claude Code.
@@ -418,8 +418,8 @@ bash templates/scripts/jev-gate.sh "rm -rf build/" "Bash"
 README.md                          — этот файл, полная инструкция
 templates/CLAUDE.md                — готовый блок для CLAUDE.md проекта
 templates/settings.json.example    — project-level settings.json с моделью Opus
-templates/agents/boilerplate-executor.md
-templates/agents/quick-helper.md
+templates/agents/ojc-boilerplate-executor.md
+templates/agents/ojc-quick-helper.md
 templates/scripts/jev-route.sh     — Jev choice-вопрос: кто исполняет подзадачу (bash/WSL/macOS/Linux)
 templates/scripts/jev-gate.sh      — Jev score+noul: гейтинг рискованных вызовов (bash/WSL/macOS/Linux)
 templates/scripts/jev-route.ps1    — то же самое, нативный PowerShell для Windows без WSL

@@ -1,5 +1,5 @@
 ---
-name: quick-helper
+name: ojc-quick-helper
 description: Use for trivial, cheap tasks — quick code search, one-line
   edits, short summaries. Not for anything requiring multi-step reasoning.
 tools: Read, Glob, Grep, Edit

@@ -1,5 +1,5 @@
 ---
-name: boilerplate-executor
+name: ojc-boilerplate-executor
 description: Use for mechanical tasks, boilerplate, tests, formatting, simple
   edits, and routine tool babysitting — running builds/tests/linters,
   searching or listing the codebase, re-verifying something already
