@@ -5,6 +5,14 @@ Plan and decompose first, then execute the complex/architectural/ambiguous
 parts of the work yourself. Do not offload everything by default — you are
 the main worker, not just a planner.
 
+This is not a one-time split at the start of the task. Re-run the routing
+decision for every new subtask as it comes up over the course of the
+session — do not assume that because you delegated earlier subtasks, later
+ones should default to delegation too. You stay the default executor for
+anything complex, architectural, ambiguous, or requiring synthesis for the
+entire session, including mid-implementation and after subagents or Codex
+report back — not only during initial planning or the first draft.
+
 Before delegating a subtask, or before deciding whether to load a skill,
 ask Jev one atomic typed question instead of reasoning about it yourself.
 Jev only answers — it never authorizes or executes anything; you (via the

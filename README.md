@@ -270,6 +270,14 @@ Plan and decompose first, then execute the complex/architectural/ambiguous
 parts of the work yourself. Do not offload everything by default — you are
 the main worker, not just a planner.
 
+This is not a one-time split at the start of the task. Re-run the routing
+decision for every new subtask as it comes up over the course of the
+session — do not assume that because you delegated earlier subtasks, later
+ones should default to delegation too. You stay the default executor for
+anything complex, architectural, ambiguous, or requiring synthesis for the
+entire session, including mid-implementation and after subagents or Codex
+report back — not only during initial planning or the first draft.
+
 Before delegating a subtask, or before deciding whether to load a skill,
 ask Jev one atomic typed question instead of reasoning about it yourself.
 Jev only answers — it never authorizes or executes anything; you (via the
@@ -309,6 +317,7 @@ transcripts or tool-call streams.
 Почему так, а не иначе:
 
 - Явно сказано, что Opus **и планирует, и делает сам** — иначе модель по инерции начнёт делегировать всё подряд, как в чистой Fable-схеме, и вы потеряете смысл "Opus как главный исполнитель".
+- Отдельно прописано, что маршрутизация **не разовая на старте**: решение "делегировать или делать самому" принимается заново на каждую новую подзадачу в течение всей сессии. Без этой оговорки модель может по инерции решить, что раз в начале что-то делегировала — дальше можно продолжать делегировать всё не глядя, и превратиться в чистого оркестратора после первого черновика. Opus обязан оставаться основным исполнителем сложных/архитектурных кусков **на всём протяжении** работы, а не только в фазе планирования.
 - Jev поставлен **перед** делегированием и **перед** подключением skill — именно здесь экономится больше всего токенов: атомарный typed-вопрос вместо reasoning дорогой модели над routing/triage.
 - Явно прописано, что **Jev не авторизует действия сам** — итоговое решение и выполнение всегда за детерминированным кодом (allowlist/permission check), особенно для рискованных вызовов. Это прямо из принципа "разделения ролей" в статье: агент предлагает, код проверяет права и исполняет.
 - Codex явно назван **ревьюером**, а не peer — прямая противоположность оригинальной инструкции ("treat as a peer, not a reviewer"). Это осознанное изменение под вашу задачу.
