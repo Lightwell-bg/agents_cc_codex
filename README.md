@@ -594,17 +594,23 @@ templates/task-example.md          — пример постановки зад�
 
 **Как использовать в скриптах из этого репозитория:**
 
-Все скрипты (`jev-route.sh`, `jev-gate.sh`, `jev-route.ps1`, `jev-gate.ps1`) поддерживают переключение провайдера через переменную `JEV_PROVIDER`:
+Все скрипты (`jev-route.sh`, `jev-gate.sh`, `jev-route.ps1`, `jev-gate.ps1`) поддерживают переключение провайдера через переменную `JEV_PROVIDER`.
+
+> **Важно:** переменные ниже (`JEV_PROVIDER`, `OPENROUTER_API_KEY`) нужно сохранить **один раз навсегда**, а не вводить перед каждым вызовом. На Windows — через GUI (раздел 11.6, способ 1: `Win` → "переменные среды" → "Создать..."). После разовой настройки просто вызываете скрипт без строк `$env:`/`export` вообще — они уже будут в окружении:
+> ```powershell
+> & "$HOME\.claude\scripts\ojc\jev-route.ps1" "rename a variable in utils.ts"
+> ```
+> Примеры ниже с `export`/`$env:` — это только чтобы показать, **какие именно** переменные и значения нужны; используйте их разово для теста в одном окне, если не хотите ещё настраивать постоянно.
 
 ```bash
-# bash / WSL / Git Bash
+# bash / WSL / Git Bash — разовый тест в текущем окне
 export JEV_PROVIDER=openrouter
 export OPENROUTER_API_KEY=sk-or-v1-...
 ~/.claude/scripts/ojc/jev-route.sh "rename a variable in utils.ts"
 ```
 
 ```powershell
-# PowerShell (Windows)
+# PowerShell (Windows) — разовый тест в текущем окне
 $env:JEV_PROVIDER = "openrouter"
 $env:OPENROUTER_API_KEY = "sk-or-v1-..."
 & "$HOME\.claude\scripts\ojc\jev-route.ps1" "rename a variable in utils.ts"
