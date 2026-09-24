@@ -62,7 +62,7 @@ flowchart TD
 | Роль | Модель | Где живёт | Задача |
 |---|---|---|---|
 | Оркестратор + главный исполнитель | **Opus**, последняя версия (например `claude-opus-5-5` — сверяйте актуальный id через `/model`) | основная сессия | Планирует, декомпозирует, **сам делает** архитектурно значимую / сложную / неоднозначную работу, синтезирует финальный результат |
-| `boilerplate-executor` | Sonnet | сабагент, `~/.claude/agents/` | Шаблонный код, тесты, форматирование, механические правки |
+| `boilerplate-executor` | Sonnet | сабагент, `~/.claude/agents/` | Шаблонный код, тесты, форматирование, механические правки + рутинная возня с инструментами (прогон тестов/линтера/сборки, поиск по коду) — возвращает Opus только отфильтрованный вывод, не сырые логи |
 | `quick-helper` (опционально) | Haiku | сабагент, `~/.claude/agents/` | Тривиальные дешёвые задачи: поиск по коду, короткие однострочные правки, суммаризация |
 | Codex | внешний движок OpenAI, плагин `codex` для Claude Code | `/codex:review`, `/codex:adversarial-review` | **Только ревью** готовых изменений Opus — независимый взгляд, поиск багов/уязвимостей/упущений. Не пишет код, не равноправный соисполнитель |
 | Jev | `jev-latest` — API `thejevai.com` (System One, typed decision model) | skill `jev-ai/jev-agent-skill` (`npx skills add`) + скрипты `templates/scripts/jev-route.sh`, `templates/scripts/jev-gate.sh` | Отвечает на узкие типизированные вопросы о текущем состоянии — не выполняет действия и не авторизует их сам |
@@ -300,8 +300,22 @@ Routing targets:
 - `opus-self` → do it yourself (architecture, complex/ambiguous debugging,
   algorithm design, synthesis).
 - `boilerplate-executor` → mechanical work: boilerplate, tests, formatting,
-  simple edits.
+  simple edits, and routine tool babysitting (see below).
 - `quick-helper` → trivial, cheap lookups or one-line edits.
+
+Minimize your own raw tool work — not just multi-step subtasks. Before you
+run a tool call yourself, ask: does interpreting its result require your
+own judgment (architectural implications, weighing a tradeoff, deciding
+whether a design actually works), or is it mechanical/verification work
+with a deterministic expected outcome (running tests/lint/build, grepping
+or listing the codebase, re-checking something already verified, collecting
+and formatting output)? Judgment → do it yourself. Mechanical/verification,
+however small → delegate to `boilerplate-executor`, even mid-task, even for
+a single command. Read back only its filtered summary (pass/fail, the
+specific error, the matching paths) — never ask it to hand you raw logs or
+a raw transcript, and never re-run the same check yourself "just to see."
+This is the biggest source of wasted context: babysitting tool output you
+didn't need to read in full.
 
 Codex is a REVIEWER, not a peer or co-executor. After you finish
 implementing a non-trivial change, always run `/codex:review` (or
@@ -318,6 +332,7 @@ transcripts or tool-call streams.
 
 - Явно сказано, что Opus **и планирует, и делает сам** — иначе модель по инерции начнёт делегировать всё подряд, как в чистой Fable-схеме, и вы потеряете смысл "Opus как главный исполнитель".
 - Отдельно прописано, что маршрутизация **не разовая на старте**: решение "делегировать или делать самому" принимается заново на каждую новую подзадачу в течение всей сессии. Без этой оговорки модель может по инерции решить, что раз в начале что-то делегировала — дальше можно продолжать делегировать всё не глядя, и превратиться в чистого оркестратора после первого черновика. Opus обязан оставаться основным исполнителем сложных/архитектурных кусков **на всём протяжении** работы, а не только в фазе планирования.
+- Добавлена явная эвристика **"raw-возня vs решение, требующее суждения"**: единица делегирования — не только целая подзадача, а любой отдельный вызов инструмента. Если для интерпретации результата не нужно суждение (прогон тестов, grep по коду, повторная проверка) — это уходит в `boilerplate-executor`, даже если это один-единственный вызов посреди работы, и Opus получает обратно только отфильтрованный вердикт, а не сырой лог. Именно тут обычно утекает больше всего контекста дорогой модели впустую — не на "подзадачах", а на пассивном чтении вывода команд, которые сам Opus не обязан был запускать.
 - Jev поставлен **перед** делегированием и **перед** подключением skill — именно здесь экономится больше всего токенов: атомарный typed-вопрос вместо reasoning дорогой модели над routing/triage.
 - Явно прописано, что **Jev не авторизует действия сам** — итоговое решение и выполнение всегда за детерминированным кодом (allowlist/permission check), особенно для рискованных вызовов. Это прямо из принципа "разделения ролей" в статье: агент предлагает, код проверяет права и исполняет.
 - Codex явно назван **ревьюером**, а не peer — прямая противоположность оригинальной инструкции ("treat as a peer, not a reviewer"). Это осознанное изменение под вашу задачу.
@@ -357,6 +372,7 @@ transcripts or tool-call streams.
 |---|---|---|
 | Планирование, декомпозиция, синтез нескольких направлений, архитектурное решение | Opus сам, `/effort max` только на этой фазе | Здесь нужна дорогая модель — платите только тут |
 | Механическая правка, шаблон, тест, форматирование | Jev → `boilerplate-executor` (Sonnet) | Дешёвая модель справляется не хуже, а стоит на порядок меньше |
+| Прогон тестов/линтера/сборки, поиск/листинг по коду, повторная проверка уже проверенного | `boilerplate-executor`, даже для одной команды посреди работы; Opus читает только вердикт | Сырой вывод команд — самый частый источник бесполезно потраченного контекста дорогой модели |
 | Тривиальный точечный вопрос / поиск / однострочная правка | Jev → `quick-helper` (Haiku) | Самая дешёвая модель, достаточно для простого случая |
 | "Какой skill подключить?" | Jev `choice`-вопрос (jev-agent-skill) вместо ручного анализа оркестратором | ~0.1–1.5с и типизированный ответ вместо reasoning дорогой модели над списком skills |
 | "Кто исполняет эту подзадачу?" | `jev-route.sh` (`choice`) вместо решения оркестратором "на глаз" | Тот же порядок экономии, структурированный ответ вместо прозы |
