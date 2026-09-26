@@ -161,6 +161,8 @@ codex login
 
 Команду `/codex:rescue` (делегирование Codex как равноправному исполнителю) в этой схеме **не используем** — это сознательное отличие от peer-схемы: Codex здесь всегда работает post-hoc, над уже готовым изменением Opus.
 
+> **Если Opus не может вызвать `/codex:review` сам.** Слэш-команды плагина часто доступны только человеку, а модели — нет. Тогда Opus запускает финальное ревью через субагента `codex:codex-rescue`, но с жёстким брифом «только ревью»: ничего не править и не создавать, просмотреть весь diff задачи, вернуть замечания с уровнем серьёзности. Это по-прежнему одно ревью, а не соисполнение.
+
 ### 4.4 Jev — типизированные решения для маршрутизации и гейтинга
 
 Jev — не LLM в привычном смысле. Он не пишет текст и не выполняет действия — он отвечает на узкие типизированные вопросы о переданном ему `state`. Решает и исполняет действие всегда **код-обвязка** (скрипт/хук в Claude Code), а не сам Jev — агент может через Jev *предложить* маршрут или оценку риска, но не имеет права сам себе это разрешить. Это и есть источник экономии токенов: вместо того чтобы дорогая модель рассуждала над routing/triage/gating прозой, атомарный typed-вопрос к Jev даёт структурированный ответ за ~100–1500 мс и на порядки дешевле обычного LLM-вызова.
@@ -342,12 +344,16 @@ wrapper script) still enforce the final decision:
 - Skill routing: use the `jev-ai/jev-agent-skill` integration — a `choice`
   question over the available skills' name/description, with a minimal
   state (task text + skill catalog), not your full context.
-- Tool-call gating for anything risky (`Bash`, `Write` outside the obvious
-  scope, external calls): run `~/.claude/scripts/ojc/jev-gate.sh` (or
-  `jev-gate.ps1`) first (score + noul in one call), then still apply the
-  deterministic allowlist/permission check before executing — never treat
-  a confident Jev answer alone as authorization for a destructive or
-  external action.
+- Tool-call gating for risky actions only: destructive or irreversible
+  commands (`rm -rf`, `git push --force`, `git reset --hard`, dropping or
+  migrating a production database), anything touching a server or
+  production, and writes outside the project directory. Ordinary edits,
+  tests and lint inside the project do not need the gate. For risky
+  actions run `~/.claude/scripts/ojc/jev-gate.sh` (or `jev-gate.ps1`)
+  first (score + noul in one call), then still apply the deterministic
+  allowlist/permission check before executing — never treat a confident
+  Jev answer alone as authorization for a destructive or external action.
+  The same applies to commands you hand the user to run on a server.
 
 Routing targets:
 - `opus-self` → do it yourself (architecture, complex/ambiguous debugging,
@@ -362,11 +368,16 @@ own judgment (architectural implications, weighing a tradeoff, deciding
 whether a design actually works), or is it mechanical/verification work
 with a deterministic expected outcome (running tests/lint/build, grepping
 or listing the codebase, re-checking something already verified, collecting
-and formatting output)? Judgment → do it yourself. Mechanical/verification,
-however small → delegate to `ojc-boilerplate-executor`, even mid-task, even for
-a single command. Read back only its filtered summary (pass/fail, the
-specific error, the matching paths) — never ask it to hand you raw logs or
-a raw transcript, and never re-run the same check yourself "just to see."
+and formatting output)? Judgment → do it yourself. Mechanical/verification
+→ delegate to `ojc-boilerplate-executor`, even mid-task. Exception: a single
+command whose output you know will be a few lines (e.g. `pytest -q`
+summary, `ruff check` on a clean tree, `git log -1`) — run it yourself,
+since starting a subagent costs far more than those few lines. Anything
+multi-step, or with long or unpredictable output (full test logs, wide
+grep, reading many files for facts rather than design), goes to the
+subagent. Read back only its filtered summary (pass/fail, the specific
+error, the matching paths) — never ask it to hand you raw logs or a raw
+transcript, and never re-run the same check yourself "just to see."
 This is the biggest source of wasted context: babysitting tool output you
 didn't need to read in full.
 
@@ -380,7 +391,11 @@ Codex is a REVIEWER, not a peer or co-executor, and it runs exactly ONCE
 per task: a single final review after the whole implementation is done and
 your tests pass — not after each subtask, and not again after you fix its
 findings. Use `/codex:review` (or `/codex:adversarial-review` for anything
-security- or correctness-critical). Resolve every finding it raises, or
+security- or correctness-critical). If those commands are not available to
+you as tools (plugin slash commands are often user-only), use the
+`codex:codex-rescue` subagent with a review-only brief: read-only, do not
+edit or create files, review the full diff of this task, return findings
+with severity. Resolve every finding it raises, or
 state explicitly why you are not. Verify your fixes with tests (run by
 `ojc-boilerplate-executor`), never by re-running Codex. A second Codex run
 happens only if the user explicitly asks for it. Never delegate primary
@@ -394,7 +409,7 @@ transcripts or tool-call streams.
 
 - Явно сказано, что Opus **и планирует, и делает сам** — иначе модель по инерции начнёт делегировать всё подряд, как в чистой Fable-схеме, и вы потеряете смысл "Opus как главный исполнитель".
 - Отдельно прописано, что маршрутизация **не разовая на старте**: решение "делегировать или делать самому" принимается заново на каждую новую подзадачу в течение всей сессии. Без этой оговорки модель может по инерции решить, что раз в начале что-то делегировала — дальше можно продолжать делегировать всё не глядя, и превратиться в чистого оркестратора после первого черновика. Opus обязан оставаться основным исполнителем сложных/архитектурных кусков **на всём протяжении** работы, а не только в фазе планирования.
-- Добавлена явная эвристика **"raw-возня vs решение, требующее суждения"**: единица делегирования — не только целая подзадача, а любой отдельный вызов инструмента. Если для интерпретации результата не нужно суждение (прогон тестов, grep по коду, повторная проверка) — это уходит в `ojc-boilerplate-executor`, даже если это один-единственный вызов посреди работы, и Opus получает обратно только отфильтрованный вердикт, а не сырой лог. Именно тут обычно утекает больше всего контекста дорогой модели впустую — не на "подзадачах", а на пассивном чтении вывода команд, которые сам Opus не обязан был запускать.
+- Добавлена явная эвристика **"raw-возня vs решение, требующее суждения"**: единица делегирования — не только целая подзадача, а любой отдельный вызов инструмента. Если для интерпретации результата не нужно суждение (прогон тестов, grep по коду, повторная проверка) — это уходит в `ojc-boilerplate-executor`, и Opus получает обратно только отфильтрованный вердикт, а не сырой лог. Исключение — одна команда с заведомо коротким выводом (итог `pytest -q`, `ruff check`, `git log -1`): её Opus запускает сам, потому что запуск субагента стоит дороже этих нескольких строк. Именно тут обычно утекает больше всего контекста дорогой модели впустую — не на "подзадачах", а на пассивном чтении вывода команд, которые сам Opus не обязан был запускать.
 - Jev поставлен **перед** делегированием и **перед** подключением skill — именно здесь экономится больше всего токенов: атомарный typed-вопрос вместо reasoning дорогой модели над routing/triage.
 - Явно прописано, что **Jev не авторизует действия сам** — итоговое решение и выполнение всегда за детерминированным кодом (allowlist/permission check), особенно для рискованных вызовов. Это прямо из принципа "разделения ролей" в статье: агент предлагает, код проверяет права и исполняет.
 - Codex явно назван **ревьюером**, а не peer — прямая противоположность оригинальной инструкции ("treat as a peer, not a reviewer"). Это осознанное изменение под вашу задачу.
@@ -434,7 +449,7 @@ transcripts or tool-call streams.
 |---|---|---|
 | Планирование, декомпозиция, синтез нескольких направлений, архитектурное решение | Opus сам, `/effort max` только на этой фазе | Здесь нужна дорогая модель — платите только тут |
 | Механическая правка, шаблон, тест, форматирование | Jev → `ojc-boilerplate-executor` (Sonnet) | Дешёвая модель справляется не хуже, а стоит на порядок меньше |
-| Прогон тестов/линтера/сборки, поиск/листинг по коду, повторная проверка уже проверенного | `ojc-boilerplate-executor`, даже для одной команды посреди работы; Opus читает только вердикт | Сырой вывод команд — самый частый источник бесполезно потраченного контекста дорогой модели |
+| Прогон тестов/линтера/сборки, поиск/листинг по коду, повторная проверка уже проверенного | `ojc-boilerplate-executor`; Opus читает только вердикт. Одну команду с выводом в пару строк Opus запускает сам | Сырой вывод команд — самый частый источник бесполезно потраченного контекста дорогой модели |
 | Тривиальный точечный вопрос / поиск / однострочная правка | Jev → `ojc-quick-helper` (Haiku) | Самая дешёвая модель, достаточно для простого случая |
 | "Какой skill подключить?" | Jev `choice`-вопрос (jev-agent-skill) вместо ручного анализа оркестратором | ~0.1–1.5с и типизированный ответ вместо reasoning дорогой модели над списком skills |
 | "Кто исполняет эту подзадачу?" | `jev-route.sh` (`choice`) вместо решения оркестратором "на глаз" | Тот же порядок экономии, структурированный ответ вместо прозы |
@@ -467,6 +482,7 @@ claude doctor                              # версия, автообновл�
 - **Скрипты вызываются по пути внутри клона репозитория (`templates/scripts/...`), а не по глобальному пути.** `CLAUDE.md` копируется в любой проект и должен работать из любого проекта — если скрипты не скопированы в `~/.claude/scripts/ojc/` (раздел 4.4) и `CLAUDE.md` в другом проекте всё ещё ссылается на `templates/scripts/...`, вызов упадёт с "файл не найден", потому что такого пути там просто нет.
 - **Codex запускается много раз (после каждого раунда исправлений).** Это дорого: в реальном прогоне 4 раунда ревью съели ≈2.9 млн токенов контекста Codex и ~13 минут. По правилу ревью одно — финальное; исправления по его замечаниям Opus проверяет тестами, а не повторным ревью. Второй запуск — только если вы сами попросили.
 - **Изменили `CLAUDE.md`, а модель работает по-старому.** Claude Code читает `CLAUDE.md` один раз, при старте сессии. Правки в середине работы до уже запущенной сессии не доходят. После обновления `CLAUDE.md` начните новую сессию (или `/clear`). В реальном прогоне правило «Codex один раз» добавили посреди сессии, и на следующем этапе Codex всё равно отработал 3 раунда.
+- **Jev-gate на каждую правку файла.** Гейт нужен только для рискованных действий: удаления, `--force`, миграции продовой базы, всё, что касается сервера, и запись вне папки проекта. Обычные правки, тесты и линтер внутри проекта через гейт не гоняют. Команды, которые Opus даёт вам для запуска на сервере (например `sudo chown -R ...`), тоже рискованные, для них гейт нужен.
 - **Субагент, которого много раз дозапускают, раздувается.** В реальном прогоне агент тестов после 6 дозапусков дошёл до ≈506 тыс. токенов контекста, и каждый его шаг перечитывает весь этот объём. По правилу после ~150 тыс. нужен свежий агент с коротким брифом.
 - **Codex используется как peer, а не ревьюер.** Если случайно начать звать `/codex:rescue` вместо `/codex:review` — вы вернётесь к peer-схеме и потеряете смысл разделения ролей из этого документа.
 - **Забыли `/reload-plugins`** после установки плагина Codex — без этого шага `/codex:*` команды не появятся.

@@ -29,12 +29,16 @@ wrapper script) still enforce the final decision:
 - Skill routing: use the `jev-ai/jev-agent-skill` integration — a `choice`
   question over the available skills' name/description, with a minimal
   state (task text + skill catalog), not your full context.
-- Tool-call gating for anything risky (`Bash`, `Write` outside the obvious
-  scope, external calls): run `~/.claude/scripts/ojc/jev-gate.sh` (or
-  `jev-gate.ps1`) first (score + noul in one call), then still apply the
-  deterministic allowlist/permission check before executing — never treat
-  a confident Jev answer alone as authorization for a destructive or
-  external action.
+- Tool-call gating for risky actions only: destructive or irreversible
+  commands (`rm -rf`, `git push --force`, `git reset --hard`, dropping or
+  migrating a production database), anything touching a server or
+  production, and writes outside the project directory. Ordinary edits,
+  tests and lint inside the project do not need the gate. For risky
+  actions run `~/.claude/scripts/ojc/jev-gate.sh` (or `jev-gate.ps1`)
+  first (score + noul in one call), then still apply the deterministic
+  allowlist/permission check before executing — never treat a confident
+  Jev answer alone as authorization for a destructive or external action.
+  The same applies to commands you hand the user to run on a server.
 
 Routing targets:
 - `opus-self` → do it yourself (architecture, complex/ambiguous debugging,
@@ -49,11 +53,16 @@ own judgment (architectural implications, weighing a tradeoff, deciding
 whether a design actually works), or is it mechanical/verification work
 with a deterministic expected outcome (running tests/lint/build, grepping
 or listing the codebase, re-checking something already verified, collecting
-and formatting output)? Judgment → do it yourself. Mechanical/verification,
-however small → delegate to `ojc-boilerplate-executor`, even mid-task, even for
-a single command. Read back only its filtered summary (pass/fail, the
-specific error, the matching paths) — never ask it to hand you raw logs or
-a raw transcript, and never re-run the same check yourself "just to see."
+and formatting output)? Judgment → do it yourself. Mechanical/verification
+→ delegate to `ojc-boilerplate-executor`, even mid-task. Exception: a single
+command whose output you know will be a few lines (e.g. `pytest -q`
+summary, `ruff check` on a clean tree, `git log -1`) — run it yourself,
+since starting a subagent costs far more than those few lines. Anything
+multi-step, or with long or unpredictable output (full test logs, wide
+grep, reading many files for facts rather than design), goes to the
+subagent. Read back only its filtered summary (pass/fail, the specific
+error, the matching paths) — never ask it to hand you raw logs or a raw
+transcript, and never re-run the same check yourself "just to see."
 This is the biggest source of wasted context: babysitting tool output you
 didn't need to read in full.
 
@@ -67,7 +76,11 @@ Codex is a REVIEWER, not a peer or co-executor, and it runs exactly ONCE
 per task: a single final review after the whole implementation is done and
 your tests pass — not after each subtask, and not again after you fix its
 findings. Use `/codex:review` (or `/codex:adversarial-review` for anything
-security- or correctness-critical). Resolve every finding it raises, or
+security- or correctness-critical). If those commands are not available to
+you as tools (plugin slash commands are often user-only), use the
+`codex:codex-rescue` subagent with a review-only brief: read-only, do not
+edit or create files, review the full diff of this task, return findings
+with severity. Resolve every finding it raises, or
 state explicitly why you are not. Verify your fixes with tests (run by
 `ojc-boilerplate-executor`), never by re-running Codex. A second Codex run
 happens only if the user explicitly asks for it. Never delegate primary
