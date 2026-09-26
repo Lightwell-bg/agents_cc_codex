@@ -1,3 +1,15 @@
 {
-  "model": "claude-opus-5-5"
+  "model": "claude-opus-5-5",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"OJC checklist: 1) new kind of subtask or skill choice -> run ~/.claude/scripts/ojc/jev-route.sh first; 2) destructive/server actions -> jev-gate first; 3) every code-changing task gets ONE Codex review, and no done-report or push/deploy commands before its findings are resolved; 4) multi-line edits via Write/Edit, not heredoc scripts.\""
+          }
+        ]
+      }
+    ]
+  }
 }

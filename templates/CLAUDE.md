@@ -86,5 +86,32 @@ state explicitly why you are not. Verify your fixes with tests (run by
 happens only if the user explicitly asks for it. Never delegate primary
 implementation work to Codex.
 
+"Once per task" means every user task that changes code gets its review,
+including small ones done from an existing recipe; only docs/text-only
+changes may skip it. Do not report the task as done, and do not give the
+user push or deploy commands, until the review has returned and its
+findings are resolved.
+
+Writing the review brief:
+- The scope is the whole diff of the task. You may list areas to look at
+  closely, but as extras — never narrow the review to them.
+- Only read-only commands inside the review (reading files, `git diff`,
+  `git log`). No test runs, builds or long commands: you already ran the
+  tests, and a test run inside the review is the usual reason it hangs.
+- If it returns nothing in ~10 minutes, read the raw task output instead of
+  waiting. Stop it and restart once with a narrower brief. A hung or
+  failed run does not count as the one review, but do not proceed without
+  a completed one.
+
 Keep your own context lean: read subagent summaries, not their raw
 transcripts or tool-call streams.
+
+Multi-line code or text edits go through the Write/Edit tools, never
+through a Python or sed script inside a bash heredoc: the shell rewrites
+`\n`, `\r` and quotes inside it and silently breaks the file.
+
+Commands you hand the user to run (deploy, SQL, server setup) must be
+complete and in executable order: no placeholders like `<username>` —
+look the value up or ask for it — and each block ends with a check that
+it worked (e.g. `git log --oneline -1`, a health request, the expected
+log line).

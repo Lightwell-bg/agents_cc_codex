@@ -308,6 +308,19 @@ Content-Type: application/json
 
 ---
 
+### 4.5 Хук-напоминание (чтобы правила не забывались)
+
+По логам реальных сессий видно: правила из `CLAUDE.md` модель со временем перестаёт выполнять. Jev не спрашивала две сессии подряд, а команды выкатки выдала до конца ревью Codex. `CLAUDE.md` читается один раз при старте, и к середине длинной сессии он тонет в контексте. Поэтому в `templates/settings.json.example` добавлен хук `UserPromptSubmit`. Claude Code сам выполняет его при **каждом вашем сообщении** и добавляет модели короткий чек-лист из четырёх пунктов: Jev перед новой подзадачей, гейт перед рискованным, одно ревью Codex до отчёта и команд выкатки, правки через Write/Edit. Это около 80 токенов на сообщение.
+
+Как подключить: в папке проекта откройте `.claude\settings.json` (если файла нет, создайте) и добавьте туда блок `"hooks"` из `templates/settings.json.example`. Если файла не было, можно просто скопировать пример целиком:
+
+```powershell
+New-Item -ItemType Directory -Force -Path ".claude" | Out-Null
+Copy-Item "D:\1PythonProjects\agents_cc_codex\agents_cc_codex\templates\settings.json.example" ".claude\settings.json"
+```
+
+Проверка: в новой сессии введите `/hooks`, в списке должен быть `UserPromptSubmit`. Хук — это команда `echo`, на Windows Claude Code выполняет её через Git Bash, как и остальные команды.
+
 ## 5. `CLAUDE.md` — инструкция оркестратору
 
 Положите в корень проекта (готовый файл — `templates/CLAUDE.md` в этом репозитории):
@@ -401,8 +414,35 @@ state explicitly why you are not. Verify your fixes with tests (run by
 happens only if the user explicitly asks for it. Never delegate primary
 implementation work to Codex.
 
+"Once per task" means every user task that changes code gets its review,
+including small ones done from an existing recipe; only docs/text-only
+changes may skip it. Do not report the task as done, and do not give the
+user push or deploy commands, until the review has returned and its
+findings are resolved.
+
+Writing the review brief:
+- The scope is the whole diff of the task. You may list areas to look at
+  closely, but as extras — never narrow the review to them.
+- Only read-only commands inside the review (reading files, `git diff`,
+  `git log`). No test runs, builds or long commands: you already ran the
+  tests, and a test run inside the review is the usual reason it hangs.
+- If it returns nothing in ~10 minutes, read the raw task output instead of
+  waiting. Stop it and restart once with a narrower brief. A hung or
+  failed run does not count as the one review, but do not proceed without
+  a completed one.
+
 Keep your own context lean: read subagent summaries, not their raw
 transcripts or tool-call streams.
+
+Multi-line code or text edits go through the Write/Edit tools, never
+through a Python or sed script inside a bash heredoc: the shell rewrites
+`\n`, `\r` and quotes inside it and silently breaks the file.
+
+Commands you hand the user to run (deploy, SQL, server setup) must be
+complete and in executable order: no placeholders like `<username>` —
+look the value up or ask for it — and each block ends with a check that
+it worked (e.g. `git log --oneline -1`, a health request, the expected
+log line).
 ```
 
 Почему так, а не иначе:
@@ -482,6 +522,11 @@ claude doctor                              # версия, автообновл�
 - **Скрипты вызываются по пути внутри клона репозитория (`templates/scripts/...`), а не по глобальному пути.** `CLAUDE.md` копируется в любой проект и должен работать из любого проекта — если скрипты не скопированы в `~/.claude/scripts/ojc/` (раздел 4.4) и `CLAUDE.md` в другом проекте всё ещё ссылается на `templates/scripts/...`, вызов упадёт с "файл не найден", потому что такого пути там просто нет.
 - **Codex запускается много раз (после каждого раунда исправлений).** Это дорого: в реальном прогоне 4 раунда ревью съели ≈2.9 млн токенов контекста Codex и ~13 минут. По правилу ревью одно — финальное; исправления по его замечаниям Opus проверяет тестами, а не повторным ревью. Второй запуск — только если вы сами попросили.
 - **Изменили `CLAUDE.md`, а модель работает по-старому.** Claude Code читает `CLAUDE.md` один раз, при старте сессии. Правки в середине работы до уже запущенной сессии не доходят. После обновления `CLAUDE.md` начните новую сессию (или `/clear`). В реальном прогоне правило «Codex один раз» добавили посреди сессии, и на следующем этапе Codex всё равно отработал 3 раунда.
+- **Правила из `CLAUDE.md` не выполняются к середине сессии.** Например, Jev не спрашивается ни разу, а ревью Codex пропускается. Подключите хук-напоминание (раздел 4.5). И не делайте в одной сессии несколько несвязанных задач подряд: контекст растёт, а правила в нём тонут. Между задачами — `/clear` или новая сессия.
+- **Команды выкатки выданы до конца ревью Codex.** По правилу отчёт «готово» и команды push/deploy — только после того, как ревью вернулось и замечания закрыты.
+- **Ревью Codex зависает.** Обычно из-за того, что ревьюер сам запускает тесты. В брифе: только чтение (`git diff`, файлы), без тестов. Если за ~10 минут результата нет — смотреть сырой вывод задачи и перезапускать с более узким брифом, а не ждать и не пропускать ревью.
+- **Бриф ревью сужен до пары вопросов.** Тогда Codex не смотрит остальное. В реальном прогоне так пропустили коллизию callback-префиксов. Область ревью — весь diff задачи, особые пункты только дополняют её.
+- **Heredoc ломает файлы.** Python- или sed-скрипт внутри bash heredoc портит `\n`, `\r` и кавычки. Это повторялось в трёх сессиях подряд. Многострочные правки — только через Write/Edit.
 - **Jev-gate на каждую правку файла.** Гейт нужен только для рискованных действий: удаления, `--force`, миграции продовой базы, всё, что касается сервера, и запись вне папки проекта. Обычные правки, тесты и линтер внутри проекта через гейт не гоняют. Команды, которые Opus даёт вам для запуска на сервере (например `sudo chown -R ...`), тоже рискованные, для них гейт нужен.
 - **Субагент, которого много раз дозапускают, раздувается.** В реальном прогоне агент тестов после 6 дозапусков дошёл до ≈506 тыс. токенов контекста, и каждый его шаг перечитывает весь этот объём. По правилу после ~150 тыс. нужен свежий агент с коротким брифом.
 - **Codex используется как peer, а не ревьюер.** Если случайно начать звать `/codex:rescue` вместо `/codex:review` — вы вернётесь к peer-схеме и потеряете смысл разделения ролей из этого документа.
@@ -501,7 +546,7 @@ claude doctor                              # версия, автообновл�
 ```
 README.md                          — этот файл, полная инструкция
 templates/CLAUDE.md                — готовый блок для CLAUDE.md проекта
-templates/settings.json.example    — project-level settings.json с моделью Opus
+templates/settings.json.example    — project-level settings.json: модель Opus + хук-напоминание (раздел 4.5)
 templates/agents/ojc-boilerplate-executor.md
 templates/agents/ojc-quick-helper.md
 templates/scripts/jev-route.sh     — Jev choice-вопрос: кто исполняет подзадачу (bash/WSL/macOS/Linux)
