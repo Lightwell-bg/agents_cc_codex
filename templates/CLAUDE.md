@@ -26,6 +26,15 @@ files, what to change and why, and how to check it. Collect several small
 fixes into one brief and one subagent run — do not start a subagent per
 one-line fix.
 
+In a brief for a new feature, list the edge cases you can already foresee,
+so they are built in rather than found by the review and fixed in a second
+run: untrusted input going into files or markup (CSV/HTML injection), time
+zones and DST, long work inside the event loop, concurrent runs, and what
+else can arrive while the bot waits for a specific input. If one feature
+spans several layers (data, logic, UI, docs), give it to two fresh agents
+in sequence (data and logic first, then UI, tests and docs) rather than
+one agent that ends with a 250k+ context re-read on every step.
+
 This is not a one-time split at the start of the task. Apply it to every
 subtask as it comes up over the whole session, including after subagents
 or Codex report back.
