@@ -69,8 +69,8 @@ $body = [ordered]@{
             type         = "choice"
             instructions = "Which executor fits this subtask?"
             criteria     = [ordered]@{
-                "opus-self"                = "Architecture, complex or ambiguous work, debugging, algorithm design, synthesis"
-                "ojc-boilerplate-executor" = "Mechanical or routine work: boilerplate, tests, formatting, running builds/tests/linters"
+                "opus-self"                = "Design, architecture, diagnosing a non-obvious bug, new core logic whose design is not settled yet"
+                "ojc-boilerplate-executor" = "Implementing an already-diagnosed fix or a change following an existing pattern; tests, docs, formatting, running builds/tests/linters"
                 "ojc-quick-helper"         = "Trivial, cheap lookup or one-line edit"
             }
         }

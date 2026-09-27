@@ -61,7 +61,7 @@ flowchart TD
 
 | Роль | Модель | Где живёт | Задача |
 |---|---|---|---|
-| Оркестратор + главный исполнитель | **Opus**, последняя версия (например `claude-opus-5-5` — сверяйте актуальный id через `/model`) | основная сессия | Планирует, декомпозирует, **сам делает** архитектурно значимую / сложную / неоднозначную работу, синтезирует финальный результат |
+| Оркестратор + главный исполнитель | **Opus**, последняя версия (например `claude-opus-5-5` — сверяйте актуальный id через `/model`) | основная сессия | Планирует, проектирует, диагностирует баги, сам пишет только новую ключевую логику, где код и есть проектирование. Всё остальное, включая мелкие уже найденные исправления, пишет Sonnet по его брифу. Синтезирует финальный результат |
 | `ojc-boilerplate-executor` | Sonnet | сабагент, `~/.claude/agents/` | Шаблонный код, тесты, форматирование, механические правки + рутинная возня с инструментами (прогон тестов/линтера/сборки, поиск по коду) — возвращает Opus только отфильтрованный вывод, не сырые логи |
 | `ojc-quick-helper` (опционально) | Haiku | сабагент, `~/.claude/agents/` | Тривиальные дешёвые задачи: поиск по коду, короткие однострочные правки, суммаризация |
 | Codex | внешний движок OpenAI, плагин `codex` для Claude Code | `/codex:review`, `/codex:adversarial-review` | **Только одно финальное ревью** всей готовой задачи — независимый взгляд, поиск багов/уязвимостей/упущений. Не пишет код, не равноправный соисполнитель, не запускается повторно после исправлений |
@@ -328,18 +328,35 @@ Copy-Item "D:\1PythonProjects\agents_cc_codex\agents_cc_codex\templates\settings
 ```markdown
 ## Orchestration workflow (Opus + Jev + Codex)
 
-You (Opus, latest) are BOTH the orchestrator AND the primary executor.
-Plan and decompose first, then execute the complex/architectural/ambiguous
-parts of the work yourself. Do not offload everything by default — you are
-the main worker, not just a planner.
+You (Opus, latest) are the orchestrator and the lead engineer. Your own
+hands-on work is limited to:
+1. Reading the code you need to design a change or diagnose a bug.
+2. Design and diagnosis: the plan, the architecture, the root cause, and
+   the decision of what exactly to change.
+3. Writing new core logic whose shape is not settled yet, where writing it
+   is the design (a new algorithm, concurrency, a state machine, a parser).
+4. Synthesis: checking subagent results and the final report to the user.
 
-This is not a one-time split at the start of the task. Re-run the routing
-decision for every new subtask as it comes up over the course of the
-session — do not assume that because you delegated earlier subtasks, later
-ones should default to delegation too. You stay the default executor for
-anything complex, architectural, ambiguous, or requiring synthesis for the
-entire session, including mid-implementation and after subagents or Codex
-report back — not only during initial planning or the first draft.
+Everything else is written by `ojc-boilerplate-executor` (Sonnet) from your
+brief — however small:
+- fixes you have already diagnosed: Codex findings, bug fixes, off-by-one,
+  renames, texts and labels, callback data, limits;
+- code that follows an existing pattern in the repo (another admin screen
+  like the existing ones, another migration, another language by the
+  recipe);
+- tests, docs, diagrams, generated files, lint and line-ending fixes;
+- running tests/lint and fixing what they report.
+Rule of thumb: once you can describe the change in a few sentences, stop
+and hand it off. Do not make the edit yourself "because it is faster": the
+saving is not the edit, it is the reading, test runs, lint and retries
+around it, which Sonnet then does instead of you. The brief names the
+files, what to change and why, and how to check it. Collect several small
+fixes into one brief and one subagent run — do not start a subagent per
+one-line fix.
+
+This is not a one-time split at the start of the task. Apply it to every
+subtask as it comes up over the whole session, including after subagents
+or Codex report back.
 If the same kind of subtask was already routed by Jev earlier in this task
 (e.g. "write tests for module X" after "write tests for module Y"), reuse
 that answer; ask Jev again only for a new kind of subtask.
@@ -369,10 +386,11 @@ wrapper script) still enforce the final decision:
   The same applies to commands you hand the user to run on a server.
 
 Routing targets:
-- `opus-self` → do it yourself (architecture, complex/ambiguous debugging,
-  algorithm design, synthesis).
-- `ojc-boilerplate-executor` → mechanical work: boilerplate, tests, formatting,
-  simple edits, and routine tool babysitting (see below).
+- `opus-self` → do it yourself: design, architecture, diagnosing a
+  non-obvious bug, new core logic whose design is not settled, synthesis.
+- `ojc-boilerplate-executor` → implementing an already-diagnosed fix or a
+  change that follows an existing pattern; tests, docs, formatting, and
+  routine tool babysitting (see below).
 - `ojc-quick-helper` → trivial, cheap lookups or one-line edits.
 
 Minimize your own raw tool work — not just multi-step subtasks. Before you
@@ -447,8 +465,8 @@ log line).
 
 Почему так, а не иначе:
 
-- Явно сказано, что Opus **и планирует, и делает сам** — иначе модель по инерции начнёт делегировать всё подряд, как в чистой Fable-схеме, и вы потеряете смысл "Opus как главный исполнитель".
-- Отдельно прописано, что маршрутизация **не разовая на старте**: решение "делегировать или делать самому" принимается заново на каждую новую подзадачу в течение всей сессии. Без этой оговорки модель может по инерции решить, что раз в начале что-то делегировала — дальше можно продолжать делегировать всё не глядя, и превратиться в чистого оркестратора после первого черновика. Opus обязан оставаться основным исполнителем сложных/архитектурных кусков **на всём протяжении** работы, а не только в фазе планирования.
+- Явно перечислено, что Opus делает **сам**: читает код для проектирования, проектирует и диагностирует, пишет новую ключевую логику, подводит итог. Всё остальное пишет Sonnet по брифу Opus, даже мелкие правки. Первая версия правила («Opus — главный исполнитель, не отдавай всё подряд») на практике привела к обратному: Opus сам делал всё, включая однострочные исправления по ревью. Причина понятна: код уже у него в контексте, и править самому кажется быстрее. Но дорогие не сами правки, а всё, что вокруг: чтение, прогоны тестов, линтер, повторы.
+- Отдельно прописано, что маршрутизация **не разовая на старте**: решение "делегировать или делать самому" принимается заново на каждую новую подзадачу в течение всей сессии. Без этой оговорки модель может по инерции решить, что раз в начале что-то делегировала — дальше можно продолжать делегировать всё не глядя, и превратиться в чистого оркестратора после первого черновика. Правило применяется к каждой подзадаче на протяжении всей сессии.
 - Добавлена явная эвристика **"raw-возня vs решение, требующее суждения"**: единица делегирования — не только целая подзадача, а любой отдельный вызов инструмента. Если для интерпретации результата не нужно суждение (прогон тестов, grep по коду, повторная проверка) — это уходит в `ojc-boilerplate-executor`, и Opus получает обратно только отфильтрованный вердикт, а не сырой лог. Исключение — одна команда с заведомо коротким выводом (итог `pytest -q`, `ruff check`, `git log -1`): её Opus запускает сам, потому что запуск субагента стоит дороже этих нескольких строк. Именно тут обычно утекает больше всего контекста дорогой модели впустую — не на "подзадачах", а на пассивном чтении вывода команд, которые сам Opus не обязан был запускать.
 - Jev поставлен **перед** делегированием и **перед** подключением skill — именно здесь экономится больше всего токенов: атомарный typed-вопрос вместо reasoning дорогой модели над routing/triage.
 - Явно прописано, что **Jev не авторизует действия сам** — итоговое решение и выполнение всегда за детерминированным кодом (allowlist/permission check), особенно для рискованных вызовов. Это прямо из принципа "разделения ролей" в статье: агент предлагает, код проверяет права и исполняет.
@@ -532,7 +550,8 @@ claude doctor                              # версия, автообновл�
 - **Codex используется как peer, а не ревьюер.** Если случайно начать звать `/codex:rescue` вместо `/codex:review` — вы вернётесь к peer-схеме и потеряете смысл разделения ролей из этого документа.
 - **Забыли `/reload-plugins`** после установки плагина Codex — без этого шага `/codex:*` команды не появятся.
 - **Нет `JEV_API_KEY`** — `jev-agent-skill`, `jev-route.sh` и `jev-gate.sh` откажут с ошибкой авторизации. Переменная должна быть в окружении именно той сессии/терминала, откуда стартует Claude Code.
-- **Opus делегирует вообще всё.** Если в CLAUDE.md не прописано явно "you are the primary executor, not just a planner" — модель по умолчанию скатывается в чисто оркестраторское поведение (как Fable в исходной схеме) и не делает сложную работу сама.
+- **Opus сам делает мелкие правки, а не отдаёт их Sonnet.** Так было в реальной сессии на 5 задач: все исправления по ревью, тексты и тесты Opus правил сам. Правило теперь прямо говорит: как только изменение можно описать парой предложений — бриф и `ojc-boilerplate-executor`, несколько мелких правок одним брифом. Хук-напоминание (раздел 4.5) повторяет это при каждом сообщении.
+- **Opus делегирует вообще всё, включая проектирование.** Обратный перекос. Проектирование, диагностику и новую ключевую логику Opus делает сам — это перечислено в `CLAUDE.md` явно.
 - **Jev используется как единственный источник истины для рискованных решений.** Это прямое нарушение принципа из статьи: Jev только отвечает на typed-вопрос, решение и выполнение — всегда за детерминированным кодом (allowlist, проверка прав). Для деструктивных/внешних действий нужно согласие нескольких контролей, а не один вероятностный порог от Jev.
 - **В `state` для Jev передаётся весь транскрипт/история сессии.** Так теряется и экономия, и предсказуемость — `state` должен быть минимальным JSON (суть запроса, предлагаемый tool и аргументы, политика, улики).
 - **Ключи вопросов меняются между версиями промпта.** Тогда логи/метрики (FP/FN, доля эскалаций) не сравнить между итерациями — держите ключи вопросов стабильными.

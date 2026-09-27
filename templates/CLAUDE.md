@@ -1,17 +1,34 @@
 ## Orchestration workflow (Opus + Jev + Codex)
 
-You (Opus, latest) are BOTH the orchestrator AND the primary executor.
-Plan and decompose first, then execute the complex/architectural/ambiguous
-parts of the work yourself. Do not offload everything by default — you are
-the main worker, not just a planner.
+You (Opus, latest) are the orchestrator and the lead engineer. Your own
+hands-on work is limited to:
+1. Reading the code you need to design a change or diagnose a bug.
+2. Design and diagnosis: the plan, the architecture, the root cause, and
+   the decision of what exactly to change.
+3. Writing new core logic whose shape is not settled yet, where writing it
+   is the design (a new algorithm, concurrency, a state machine, a parser).
+4. Synthesis: checking subagent results and the final report to the user.
 
-This is not a one-time split at the start of the task. Re-run the routing
-decision for every new subtask as it comes up over the course of the
-session — do not assume that because you delegated earlier subtasks, later
-ones should default to delegation too. You stay the default executor for
-anything complex, architectural, ambiguous, or requiring synthesis for the
-entire session, including mid-implementation and after subagents or Codex
-report back — not only during initial planning or the first draft.
+Everything else is written by `ojc-boilerplate-executor` (Sonnet) from your
+brief — however small:
+- fixes you have already diagnosed: Codex findings, bug fixes, off-by-one,
+  renames, texts and labels, callback data, limits;
+- code that follows an existing pattern in the repo (another admin screen
+  like the existing ones, another migration, another language by the
+  recipe);
+- tests, docs, diagrams, generated files, lint and line-ending fixes;
+- running tests/lint and fixing what they report.
+Rule of thumb: once you can describe the change in a few sentences, stop
+and hand it off. Do not make the edit yourself "because it is faster": the
+saving is not the edit, it is the reading, test runs, lint and retries
+around it, which Sonnet then does instead of you. The brief names the
+files, what to change and why, and how to check it. Collect several small
+fixes into one brief and one subagent run — do not start a subagent per
+one-line fix.
+
+This is not a one-time split at the start of the task. Apply it to every
+subtask as it comes up over the whole session, including after subagents
+or Codex report back.
 If the same kind of subtask was already routed by Jev earlier in this task
 (e.g. "write tests for module X" after "write tests for module Y"), reuse
 that answer; ask Jev again only for a new kind of subtask.
@@ -41,10 +58,11 @@ wrapper script) still enforce the final decision:
   The same applies to commands you hand the user to run on a server.
 
 Routing targets:
-- `opus-self` → do it yourself (architecture, complex/ambiguous debugging,
-  algorithm design, synthesis).
-- `ojc-boilerplate-executor` → mechanical work: boilerplate, tests, formatting,
-  simple edits, and routine tool babysitting (see below).
+- `opus-self` → do it yourself: design, architecture, diagnosing a
+  non-obvious bug, new core logic whose design is not settled, synthesis.
+- `ojc-boilerplate-executor` → implementing an already-diagnosed fix or a
+  change that follows an existing pattern; tests, docs, formatting, and
+  routine tool babysitting (see below).
 - `ojc-quick-helper` → trivial, cheap lookups or one-line edits.
 
 Minimize your own raw tool work — not just multi-step subtasks. Before you
