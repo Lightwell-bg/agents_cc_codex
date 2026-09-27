@@ -29,6 +29,13 @@ one-line fix.
 This is not a one-time split at the start of the task. Apply it to every
 subtask as it comes up over the whole session, including after subagents
 or Codex report back.
+
+Ambiguous requests: if a request has two reasonable readings that lead to
+different code, ask one short question before designing — do not pick a
+reading and build it. If a question arrives with no context ("how do I
+generate this?"), ask what "this" is instead of searching the repo for
+it. For a pure question with no code change, answering both readings is
+fine.
 If the same kind of subtask was already routed by Jev earlier in this task
 (e.g. "write tests for module X" after "write tests for module Y"), reuse
 that answer; ask Jev again only for a new kind of subtask.
@@ -120,6 +127,12 @@ Writing the review brief:
   waiting. Stop it and restart once with a narrower brief. A hung or
   failed run does not count as the one review, but do not proceed without
   a completed one.
+- If the Codex subagent cannot be started (permission check, classifier
+  block, plugin error), retry once — a block can be one-off and a retry
+  bypasses nothing. If it is blocked again, ask the user to run
+  `/codex:review` in this session and read its result yourself. "Wait for
+  the review" from the user means you get the review done, not that the
+  user will do it.
 
 Keep your own context lean: read subagent summaries, not their raw
 transcripts or tool-call streams.
