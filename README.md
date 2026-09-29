@@ -260,7 +260,7 @@ Content-Type: application/json
 - **Несколько вопросов к одному `state` считаются параллельно одним вызовом** — так можно получить `route` + `risk` + `needs_human_review` за один HTTP-запрос вместо трёх.
 - **Ключи вопросов держите стабильными** между версиями — иначе логи и метрики (FP/FN, объём ручной проверки) не будут сравнимы.
 
-> **Альтернативный доступ через OpenRouter-ключ** (без отдельного аккаунта на thejevai.com) — см. подробно раздел 11.5. Коротко: скрипты уже поддерживают переключение `JEV_PROVIDER=openrouter` + `OPENROUTER_API_KEY=...` вместо `JEV_API_KEY`.
+> **Альтернативный доступ через OpenRouter-ключ** (без отдельного аккаунта на thejevai.com) — см. подробно раздел 12.5. Коротко: скрипты уже поддерживают переключение `JEV_PROVIDER=openrouter` + `OPENROUTER_API_KEY=...` вместо `JEV_API_KEY`.
 
 **4.4.3 Маршрутизация моделей — `jev-route.sh`**
 
@@ -358,8 +358,9 @@ In a brief for a new feature, list the edge cases you can already foresee,
 so they are built in rather than found by the review and fixed in a second
 run: untrusted input going into files or markup (CSV/HTML injection), time
 zones and DST, long work inside the event loop, concurrent runs (money and
-balances need a row lock), who else can see the screen (group chats), and
-what else can arrive while the bot waits for a specific input. Also put in
+balances need a row lock), who else can see the output (shared chats,
+channels, public pages), and what else can arrive while the app waits for
+a specific input (other message types, other commands). Also put in
 every rule from the project's own CLAUDE.md that applies to this feature.
 
 When the review finds a kind of problem that it already found in an
@@ -557,7 +558,7 @@ claude doctor                              # версия, автообновл�
                                             # ожидаем высокий score/noul → эскалация
 ```
 
-(скрипты должны быть уже скопированы в `~/.claude/scripts/ojc/` по шагам раздела 4.4 — если ещё нет, см. также раздел 11 для Windows.)
+(скрипты должны быть уже скопированы в `~/.claude/scripts/ojc/` по шагам раздела 4.4 — если ещё нет, см. также раздел 12 для Windows.)
 
 Если всё возвращает осмысленный JSON без ошибок авторизации — установка готова. Дальше — реальная задача по шаблону из раздела 6, с обязательным "сначала покажи мне план".
 
@@ -591,7 +592,23 @@ claude doctor                              # версия, автообновл�
 
 ---
 
-## 10. Структура этого репозитория
+## 10. Как обновлять схему
+
+Шаблоны в этом репозитории периодически правятся по итогам реальных сессий. Чтобы обновление дошло до ваших проектов:
+
+1. **Скачать обновление.** В папке этого репозитория: `git pull`.
+2. **Скрипты и сабагенты** — скопировать поверх старых (они общие для всех проектов):
+   ```powershell
+   Copy-Item templates\agents\*.md "$HOME\.claude\agents\" -Force
+   Copy-Item templates\scripts\jev-route.sh, templates\scripts\jev-gate.sh, templates\scripts\jev-route.ps1, templates\scripts\jev-gate.ps1 "$HOME\.claude\scripts\ojc\" -Force
+   ```
+3. **`CLAUDE.md` каждого проекта.** В `CLAUDE.md` проекта заменить только блок `## Orchestration workflow (Opus + Jev + Codex)` на новый из `templates/CLAUDE.md`. Раздел `## Project rules` и всё остальное, что относится к самому проекту, не трогать. Если в проекте раздела `## Project rules` ещё нет — добавить его из шаблона.
+4. **Хук** (раздел 4.5) — обновлять, только если в `templates/settings.json.example` изменился текст команды. Он стоит в `~\.claude\settings.json` и работает сразу во всех проектах.
+5. **Новая сессия** в проекте: `CLAUDE.md` читается только при старте.
+
+Раздел `## Project rules` — место для правил конкретного проекта. Их дописывает сам Opus: если ревью Codex второй раз находит проблему одного типа, он добавляет туда однострочное правило, и следующие брифы учитывают его сразу. Общий блок Orchestration workflow при этом остаётся одинаковым во всех проектах.
+
+## 11. Структура этого репозитория
 
 ```
 README.md                          — этот файл, полная инструкция
@@ -610,9 +627,9 @@ templates/task-example.md          — пример постановки зад�
 
 ---
 
-## 11. Установка Jev — подробно (в общем и отдельно для Windows)
+## 12. Установка Jev — подробно (в общем и отдельно для Windows)
 
-### 11.1 Что вообще нужно, независимо от ОС
+### 12.1 Что вообще нужно, независимо от ОС
 
 1. **Аккаунт и ключ API.** Зайдите на https://thejevai.com, зарегистрируйтесь/войдите, в разделе API keys создайте ключ. Это и есть значение `JEV_API_KEY`.
    > Сам домен `thejevai.com` недоступен из моей текущей сессии (заблокирован сетевой прокси окружения), поэтому точный путь в интерфейсе (название пунктов меню) я не проверял вживую — но раздел с API-ключами есть у любого такого сервиса, ищите "API keys" / "Developers" в настройках аккаунта.
@@ -629,7 +646,7 @@ templates/task-example.md          — пример постановки зад�
 
 Общая последовательность одинакова на любой ОС: получить ключ → поставить Node.js → `npx skills add jev-ai/jev-agent-skill` → выставить `JEV_API_KEY` (и опц. `JEV_LANGUAGE`) в окружении → проверить тестовым вызовом.
 
-### 11.2 Windows — вариант А: WSL2 (рекомендуется)
+### 12.2 Windows — вариант А: WSL2 (рекомендуется)
 
 Самый надёжный путь: внутри WSL2 всё работает так же, как в Linux/macOS-инструкциях выше (bash-скрипты `jev-route.sh`/`jev-gate.sh`, `curl`, `python3` — без адаптаций).
 
@@ -676,7 +693,7 @@ templates/task-example.md          — пример постановки зад�
    ```
 10. Если параллельно правите файлы из Windows-редактора (VS Code) — установите расширение **WSL** для VS Code и открывайте папку командой `code .` прямо из терминала WSL внутри клонированной папки: VS Code подключится к WSL-окружению, а редактируете вы всё равно в привычном Windows-интерфейсе.
 
-### 11.3 Windows — вариант Б: нативно, без WSL (PowerShell)
+### 12.3 Windows — вариант Б: нативно, без WSL (PowerShell)
 
 Если WSL ставить не хочется — используйте `.ps1`-версии скриптов, которые уже лежат в `templates/scripts/` (`jev-route.ps1`, `jev-gate.ps1`) и не требуют ни `curl`, ни `python3`.
 
@@ -731,16 +748,16 @@ templates/task-example.md          — пример постановки зад�
    ```
    Ожидается JSON-ответ от Jev (route/risk/needs_human_review) без ошибок авторизации.
 
-### 11.4 Частые проблемы на Windows
+### 12.4 Частые проблемы на Windows
 
 - **`wsl --install` ничего не делает / ошибка версии.** Обновите Windows до актуальной версии через "Параметры → Центр обновления Windows", затем повторите. Также нужна включённая виртуализация в BIOS/UEFI (на большинстве современных ПК включена по умолчанию).
 - **`node`/`npm` не найден после установки.** Установщик Node.js меняет PATH только для новых окон терминала — закройте и заново откройте PowerShell/терминал VS Code.
 - **`Invoke-RestMethod`/`curl` в PowerShell ведут себя странно.** В Windows PowerShell (не PowerShell 7+) `curl` — это алиас на `Invoke-WebRequest`, а не настоящий curl, и синтаксис флагов другой. Используйте готовые `.ps1`-скрипты из этого репозитория (`Invoke-RestMethod`) вместо ручного набора `curl`-команд из bash-примеров — они для разных сред не взаимозаменяемы 1-в-1.
-- **Скрипт `.ps1` не запускается: "cannot be loaded because running scripts is disabled".** Это `ExecutionPolicy` — см. шаг 6 в 11.3 (`Set-ExecutionPolicy` или запуск через `-ExecutionPolicy Bypass`).
+- **Скрипт `.ps1` не запускается: "cannot be loaded because running scripts is disabled".** Это `ExecutionPolicy` — см. шаг 6 в 12.3 (`Set-ExecutionPolicy` или запуск через `-ExecutionPolicy Bypass`).
 - **`JEV_API_KEY` не подхватывается.** Через `$env:JEV_API_KEY = "..."` переменная живёт только в текущем окне терминала — закрыли окно, потеряли значение. Для постоянного значения нужен `setx` (и новое окно после него), либо задавайте `$env:JEV_API_KEY` в начале каждой сессии/в профиле PowerShell (`$PROFILE`).
 - **Антивирус/корпоративный прокси блокирует `npm install`/`npx`.** Частая история на корпоративных Windows-машинах — проверьте настройки прокси в `npm config`, либо согласуйте с администратором сети доступ к `registry.npmjs.org`.
 
-### 11.5 Альтернатива: доступ к Jev через OpenRouter-ключ
+### 12.5 Альтернатива: доступ к Jev через OpenRouter-ключ
 
 Если у вас уже есть аккаунт OpenRouter (используете его для других моделей) и не хочется заводить отдельный ключ на thejevai.com — Jev доступен и через OpenRouter, под тем же принципом typed-вопросов.
 
@@ -753,7 +770,7 @@ templates/task-example.md          — пример постановки зад�
 
 Все скрипты (`jev-route.sh`, `jev-gate.sh`, `jev-route.ps1`, `jev-gate.ps1`) поддерживают переключение провайдера через переменную `JEV_PROVIDER`.
 
-> **Важно:** переменные ниже (`JEV_PROVIDER`, `OPENROUTER_API_KEY`) нужно сохранить **один раз навсегда**, а не вводить перед каждым вызовом. На Windows — через GUI (раздел 11.6, способ 1: `Win` → "переменные среды" → "Создать..."). После разовой настройки просто вызываете скрипт без строк `$env:`/`export` вообще — они уже будут в окружении:
+> **Важно:** переменные ниже (`JEV_PROVIDER`, `OPENROUTER_API_KEY`) нужно сохранить **один раз навсегда**, а не вводить перед каждым вызовом. На Windows — через GUI (раздел 12.6, способ 1: `Win` → "переменные среды" → "Создать..."). После разовой настройки просто вызываете скрипт без строк `$env:`/`export` вообще — они уже будут в окружении:
 > ```powershell
 > & "$HOME\.claude\scripts\ojc\jev-route.ps1" "rename a variable in utils.ts"
 > ```
@@ -791,7 +808,7 @@ $env:OPENROUTER_API_KEY = "sk-or-v1-..."
 | Уже платите за OpenRouter, не хочется второй биллинг | `openrouter` — model id подтверждён (`~typesafe/jev-latest` / `typesafe/jev-1.13`), но сверьте путь эндпоинта перед стартом (см. оговорку выше) |
 | Нужна привязка к конкретной версии модели, а не "latest" | Задайте `JEV_MODEL` явно (например `jev-1.13` для `direct` или `typesafe/jev-1.13` для `openrouter`) |
 
-### 11.6 Хранение ключей Jev на Windows — пошагово
+### 12.6 Хранение ключей Jev на Windows — пошагово
 
 Ключ (`JEV_API_KEY`, опционально `JEV_LANGUAGE`, или `OPENROUTER_API_KEY` при доступе через OpenRouter) должен быть переменной окружения — не файлом в проекте, не в коде, не в `CLAUDE.md`. Ниже два способа; для тех, кто не уверен в командах терминала, рекомендуется **способ 1** — через интерфейс Windows, там нет риска опечататься в команде.
 
@@ -847,7 +864,7 @@ JSON с полем `choice` в ответе — всё настроено вер
 
 ---
 
-## 12. Источники
+## 13. Источники
 
 Первичный источник по API и принципам (используйте как основной ориентир):
 
