@@ -29,8 +29,15 @@ one-line fix.
 In a brief for a new feature, list the edge cases you can already foresee,
 so they are built in rather than found by the review and fixed in a second
 run: untrusted input going into files or markup (CSV/HTML injection), time
-zones and DST, long work inside the event loop, concurrent runs, and what
-else can arrive while the bot waits for a specific input. If one feature
+zones and DST, long work inside the event loop, concurrent runs (money and
+balances need a row lock), who else can see the screen (group chats), and
+what else can arrive while the bot waits for a specific input. Also put in
+every rule from the project's own CLAUDE.md that applies to this feature.
+
+When the review finds a kind of problem that it already found in an
+earlier task of this project, add a one-line rule about it to the
+project's own CLAUDE.md (outside the Orchestration workflow block), so
+that the next brief includes it from the start. If one feature
 spans several layers (data, logic, UI, docs), give it to two fresh agents
 in sequence (data and logic first, then UI, tests and docs) rather than
 one agent that ends with a 250k+ context re-read on every step.
