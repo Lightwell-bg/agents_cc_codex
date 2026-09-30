@@ -614,7 +614,12 @@ claude doctor                              # версия, автообновл�
    Copy-Item templates\agents\*.md "$HOME\.claude\agents\" -Force
    Copy-Item templates\scripts\jev-route.sh, templates\scripts\jev-gate.sh, templates\scripts\jev-route.ps1, templates\scripts\jev-gate.ps1 "$HOME\.claude\scripts\ojc\" -Force
    ```
-3. **`CLAUDE.md` каждого проекта.** В `CLAUDE.md` проекта заменить только блок `## Orchestration workflow (Opus + Jev + Codex)` на новый из `templates/CLAUDE.md`. Раздел `## Project rules` и всё остальное, что относится к самому проекту, не трогать. Если в проекте раздела `## Project rules` ещё нет — добавить его из шаблона.
+3. **`CLAUDE.md` каждого проекта** — одной командой из папки этого репозитория (путь — папка вашего проекта):
+   ```powershell
+   .\templates\scripts\update-claude-md.ps1 -Project "D:\путь\к\проекту"
+   ```
+   Скрипт заменяет только блок `## Orchestration workflow (Opus + Jev + Codex)`. Раздел `## Project rules` и всё остальное в файле проекта остаётся как было; если `## Project rules` не было — добавляет пустой. Старую версию сохраняет рядом как `CLAUDE.md.bak`. Если `CLAUDE.md` в проекте ещё нет — создаёт его.
+   Если `git pull` в этом репозитории ругается `Your local changes ... would be overwritten` — вы правили файлы шаблона у себя. Выполните `git stash`, потом снова `git pull`. Правила проекта держите в `CLAUDE.md` самого проекта, а не в `templates/`.
 4. **Хук** (раздел 4.5) — обновлять, только если в `templates/settings.json.example` изменился текст команды. Он стоит в `~\.claude\settings.json` и работает сразу во всех проектах.
 5. **Новая сессия** в проекте: `CLAUDE.md` читается только при старте.
 
@@ -632,6 +637,7 @@ templates/scripts/jev-route.sh     — Jev choice-вопрос: кто испо�
 templates/scripts/jev-gate.sh      — Jev score+noul: гейтинг рискованных вызовов (bash/WSL/macOS/Linux)
 templates/scripts/jev-route.ps1    — то же самое, нативный PowerShell для Windows без WSL
 templates/scripts/jev-gate.ps1     — то же самое, нативный PowerShell для Windows без WSL
+templates/scripts/update-claude-md.ps1 — обновляет блок Orchestration workflow в CLAUDE.md проекта (раздел 10)
 templates/task-example.md          — пример постановки задачи оркестратору
 ```
 
