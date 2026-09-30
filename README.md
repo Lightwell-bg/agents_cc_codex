@@ -39,7 +39,7 @@ flowchart TD
     Q --> O
     SK --> O
 
-    O -->|"готовое изменение"| C["Codex<br/>(плагин, /codex:review)<br/>РЕВЬЮЕР, один раз в конце"]
+    O -->|"готовое изменение"| C["Codex<br/>(плагин, /codex:review)<br/>РЕВЬЮЕР: новый проект<br/>и существенные изменения"]
     C -->|"замечания"| O
     O -->|"итог, только после ревью"| U
 ```
@@ -64,7 +64,7 @@ flowchart TD
 | Оркестратор + главный исполнитель | **Opus**, последняя версия (например `claude-opus-5-5` — сверяйте актуальный id через `/model`) | основная сессия | Планирует, проектирует, диагностирует баги, сам пишет только новую ключевую логику, где код и есть проектирование. Всё остальное, включая мелкие уже найденные исправления, пишет Sonnet по его брифу. Синтезирует финальный результат |
 | `ojc-boilerplate-executor` | Sonnet | сабагент, `~/.claude/agents/` | Шаблонный код, тесты, форматирование, механические правки + рутинная возня с инструментами (прогон тестов/линтера/сборки, поиск по коду) — возвращает Opus только отфильтрованный вывод, не сырые логи |
 | `ojc-quick-helper` (опционально) | Haiku | сабагент, `~/.claude/agents/` | Тривиальные дешёвые задачи: поиск по коду, короткие однострочные правки, суммаризация |
-| Codex | внешний движок OpenAI, плагин `codex` для Claude Code | `/codex:review`, `/codex:adversarial-review` | **Только одно финальное ревью** всей готовой задачи — независимый взгляд, поиск багов/уязвимостей/упущений. Не пишет код, не равноправный соисполнитель, не запускается повторно после исправлений |
+| Codex | внешний движок OpenAI, плагин `codex` для Claude Code | `/codex:review`, `/codex:adversarial-review` | **Одно финальное ревью**, и только для первого создания проекта и существенных изменений (новая функция, схема базы, деньги, авторизация, права, архитектура). Мелкие правки без Codex. Независимый взгляд, поиск багов и уязвимостей. Не пишет код, не запускается повторно после исправлений |
 | Jev | `jev-latest` — API `thejevai.com` (System One, typed decision model) | skill `jev-ai/jev-agent-skill` (`npx skills add`) + скрипты `~/.claude/scripts/ojc/jev-route.*`, `~/.claude/scripts/ojc/jev-gate.*` (устанавливаются глобально, исходники в `templates/scripts/` этого репозитория) | Отвечает на узкие типизированные вопросы о текущем состоянии — не выполняет действия и не авторизует их сам |
 
 > **Разделение ролей — ключевой принцип Jev.** LLM (Opus/Sonnet/Haiku) планирует, пишет код, рассуждает. Jev **не генерирует текст** — он отвечает на atomic typed-вопросы трёх видов:
@@ -310,7 +310,7 @@ Content-Type: application/json
 
 ### 4.5 Хук-напоминание (чтобы правила не забывались)
 
-По логам реальных сессий видно: правила из `CLAUDE.md` модель со временем перестаёт выполнять. Jev не спрашивала две сессии подряд, а команды выкатки выдала до конца ревью Codex. `CLAUDE.md` читается один раз при старте, и к середине длинной сессии он тонет в контексте. Поэтому в `templates/settings.json.example` добавлен хук `UserPromptSubmit`. Claude Code сам выполняет его при **каждом вашем сообщении** и добавляет модели короткий чек-лист из четырёх пунктов: Jev перед новой подзадачей, гейт перед рискованным, одно ревью Codex до отчёта и команд выкатки, правки через Write/Edit. Это около 80 токенов на сообщение.
+По логам реальных сессий видно: правила из `CLAUDE.md` модель со временем перестаёт выполнять. Jev не спрашивала две сессии подряд, а команды выкатки выдала до конца ревью Codex. `CLAUDE.md` читается один раз при старте, и к середине длинной сессии он тонет в контексте. Поэтому в `templates/settings.json.example` добавлен хук `UserPromptSubmit`. Claude Code сам выполняет его при **каждом вашем сообщении** и добавляет модели короткий чек-лист из четырёх пунктов: Jev перед новой подзадачей, гейт перед рискованным, ревью Codex только для нового проекта и существенных изменений, правки через Write/Edit. Это около 80 токенов на сообщение.
 
 Как подключить: в папке проекта откройте `.claude\settings.json` (если файла нет, создайте) и добавьте туда блок `"hooks"` из `templates/settings.json.example`. Если файла не было, можно просто скопировать пример целиком:
 
@@ -442,10 +442,19 @@ agent with a short brief (goal, files, what is already done) instead:
 every step of a resumed agent re-reads its whole context, so a 500k-token
 agent costs far more per step than a fresh one that re-reads a few files.
 
-Codex is a REVIEWER, not a peer or co-executor, and it runs exactly ONCE
-per task: a single final review after the whole implementation is done and
-your tests pass — not after each subtask, and not again after you fix its
-findings. Use `/codex:review` (or `/codex:adversarial-review` for anything
+Codex is a REVIEWER, not a peer or co-executor, and it runs only for:
+- the first build of a new project;
+- significant changes: a new feature or module, a database schema change
+  or migration, anything touching money, payments, auth, permissions or
+  data deletion, or a change to the architecture or across many files;
+- an explicit request from the user.
+Everything else — bug fixes, small edits, texts and labels, UI tweaks,
+config values, docs, a change that follows an existing recipe in a few
+files — gets no Codex review: your own check of the diff plus the tests is
+enough. When in doubt, it is not significant.
+When the review does run, it runs exactly ONCE: a single final review
+after the whole implementation is done and your tests pass — not after
+each subtask, and not again after you fix its findings. Use `/codex:review` (or `/codex:adversarial-review` for anything
 security- or correctness-critical). If those commands are not available to
 you as tools (plugin slash commands are often user-only), use the
 `codex:codex-rescue` subagent with a review-only brief: read-only, do not
@@ -456,11 +465,10 @@ state explicitly why you are not. Verify your fixes with tests (run by
 happens only if the user explicitly asks for it. Never delegate primary
 implementation work to Codex.
 
-"Once per task" means every user task that changes code gets its review,
-including small ones done from an existing recipe; only docs/text-only
-changes may skip it. Do not report the task as done, and do not give the
-user push or deploy commands, until the review has returned and its
-findings are resolved.
+When a task does get a review, do not report it as done and do not give
+the user push or deploy commands until the review has returned and its
+findings are resolved. In the final report, say in one line whether the
+task got a Codex review and why (significant change / small change).
 
 Writing the review brief:
 - The scope is the whole diff of the task. You may list areas to look at
@@ -532,8 +540,8 @@ Servers and secrets:
 решение и рискованные вызовы всё равно проверяй детерминированным кодом,
 не полагайся на один ответ Jev. Рутину отдавай ojc-boilerplate-executor,
 тривиальные задачи — ojc-quick-helper. После завершения всей реализации —
-один раз финальное Codex-ревью (/codex:review или /codex:adversarial-review),
-закрой замечания и проверь исправления тестами, без повторного ревью.
+если изменение существенное — одно финальное Codex-ревью, закрой замечания
+и проверь исправления тестами; мелкие правки без ревью Codex.
 
 Сначала покажи мне план, затем приступай к выполнению.
 ```
@@ -553,7 +561,7 @@ Servers and secrets:
 | "Какой skill подключить?" | Jev `choice`-вопрос (jev-agent-skill) вместо ручного анализа оркестратором | ~0.1–1.5с и типизированный ответ вместо reasoning дорогой модели над списком skills |
 | "Кто исполняет эту подзадачу?" | `jev-route.sh` (`choice`) вместо решения оркестратором "на глаз" | Тот же порядок экономии, структурированный ответ вместо прозы |
 | "Насколько рискован этот вызов инструмента?" | `jev-gate.sh` (`score`+`noul`) + детерминированный allowlist | Быстрый предохранитель до дорогого/необратимого действия, но не единственный контроль |
-| Вся задача готова, тесты зелёные — один раз перед сдачей | Codex (`/codex:review`), **один запуск** | Ревью не тратит токены Claude, идёт по отдельному лимиту OpenAI/ChatGPT |
+| Новый проект или существенное изменение готово, тесты зелёные | Codex (`/codex:review`), **один запуск**. Мелкие правки — без Codex | Ревью не тратит токены Claude, идёт по отдельному лимиту OpenAI/ChatGPT |
 | Несвязанные мелкие задачи после основной сессии | Новая сессия на Sonnet напрямую, без оркестратора | Не тащите дорогой Opus-контекст через десятки мелких итераций |
 
 ---
@@ -591,6 +599,7 @@ claude doctor                              # версия, автообновл�
 - **Opus сам ходит на сервер с паролем из чата.** Правило: только вход по ключу, который вы уже настроили. Пароль из чата не использовать и ввод пароля не автоматизировать. Если ключ не подходит — Opus даёт команды вам. Адрес сервера перед работой сверять по DNS, а не по памяти: после переезда старые адреса и команды в памяти и в `~/.ssh/config` устаревают.
 - **Jev-gate на каждую правку файла.** Гейт нужен только для рискованных действий: удаления, `--force`, миграции продовой базы, всё, что касается сервера, и запись вне папки проекта. Обычные правки, тесты и линтер внутри проекта через гейт не гоняют. Команды, которые Opus даёт вам для запуска на сервере (например `sudo chown -R ...`), тоже рискованные, для них гейт нужен.
 - **Субагент, которого много раз дозапускают, раздувается.** В реальном прогоне агент тестов после 6 дозапусков дошёл до ≈506 тыс. токенов контекста, и каждый его шаг перечитывает весь этот объём. По правилу после ~150 тыс. нужен свежий агент с коротким брифом.
+- **Codex проверяет каждую мелкую правку.** Не нужно. Ревью Codex — только для первого создания проекта и существенных изменений: новая функция или модуль, миграция или схема базы, деньги, оплаты, авторизация, права, удаление данных, архитектура или правки во многих файлах. Исправления багов, тексты, мелкие правки интерфейса, настройки и документация идут без Codex: Opus сам смотрит diff, плюс тесты. Если сомнение — считать изменение мелким.
 - **Codex используется как peer, а не ревьюер.** Если случайно начать звать `/codex:rescue` вместо `/codex:review` — вы вернётесь к peer-схеме и потеряете смысл разделения ролей из этого документа.
 - **Забыли `/reload-plugins`** после установки плагина Codex — без этого шага `/codex:*` команды не появятся.
 - **Нет `JEV_API_KEY`** — `jev-agent-skill`, `jev-route.sh` и `jev-gate.sh` откажут с ошибкой авторизации. Переменная должна быть в окружении именно той сессии/терминала, откуда стартует Claude Code.

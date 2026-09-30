@@ -114,10 +114,19 @@ agent with a short brief (goal, files, what is already done) instead:
 every step of a resumed agent re-reads its whole context, so a 500k-token
 agent costs far more per step than a fresh one that re-reads a few files.
 
-Codex is a REVIEWER, not a peer or co-executor, and it runs exactly ONCE
-per task: a single final review after the whole implementation is done and
-your tests pass — not after each subtask, and not again after you fix its
-findings. Use `/codex:review` (or `/codex:adversarial-review` for anything
+Codex is a REVIEWER, not a peer or co-executor, and it runs only for:
+- the first build of a new project;
+- significant changes: a new feature or module, a database schema change
+  or migration, anything touching money, payments, auth, permissions or
+  data deletion, or a change to the architecture or across many files;
+- an explicit request from the user.
+Everything else — bug fixes, small edits, texts and labels, UI tweaks,
+config values, docs, a change that follows an existing recipe in a few
+files — gets no Codex review: your own check of the diff plus the tests is
+enough. When in doubt, it is not significant.
+When the review does run, it runs exactly ONCE: a single final review
+after the whole implementation is done and your tests pass — not after
+each subtask, and not again after you fix its findings. Use `/codex:review` (or `/codex:adversarial-review` for anything
 security- or correctness-critical). If those commands are not available to
 you as tools (plugin slash commands are often user-only), use the
 `codex:codex-rescue` subagent with a review-only brief: read-only, do not
@@ -128,11 +137,10 @@ state explicitly why you are not. Verify your fixes with tests (run by
 happens only if the user explicitly asks for it. Never delegate primary
 implementation work to Codex.
 
-"Once per task" means every user task that changes code gets its review,
-including small ones done from an existing recipe; only docs/text-only
-changes may skip it. Do not report the task as done, and do not give the
-user push or deploy commands, until the review has returned and its
-findings are resolved.
+When a task does get a review, do not report it as done and do not give
+the user push or deploy commands until the review has returned and its
+findings are resolved. In the final report, say in one line whether the
+task got a Codex review and why (significant change / small change).
 
 Writing the review brief:
 - The scope is the whole diff of the task. You may list areas to look at
