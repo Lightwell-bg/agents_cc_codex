@@ -164,6 +164,17 @@ look the value up or ask for it — and each block ends with a check that
 it worked (e.g. `git log --oneline -1`, a health request, the expected
 log line).
 
+Servers and secrets:
+- Connect to a server only with key-based access the user has already set
+  up. Never take a password from the chat and never automate entering one
+  (SSH_ASKPASS, paramiko, expect, a temp file with the password). If key
+  access fails, stop and give the user the commands to run instead.
+- Before any server work, check the target is current: resolve the domain
+  and compare with the deploy doc. Hosts, IPs and commands in memory or
+  `~/.ssh/config` go stale after a migration.
+- Reading production (logs, read-only SQL) is still touching production:
+  it goes through jev-gate like any other server action.
+
 ## Project rules
 
 <!-- Rules specific to this project. The orchestrator adds a one-line rule

@@ -491,6 +491,17 @@ complete and in executable order: no placeholders like `<username>` —
 look the value up or ask for it — and each block ends with a check that
 it worked (e.g. `git log --oneline -1`, a health request, the expected
 log line).
+
+Servers and secrets:
+- Connect to a server only with key-based access the user has already set
+  up. Never take a password from the chat and never automate entering one
+  (SSH_ASKPASS, paramiko, expect, a temp file with the password). If key
+  access fails, stop and give the user the commands to run instead.
+- Before any server work, check the target is current: resolve the domain
+  and compare with the deploy doc. Hosts, IPs and commands in memory or
+  `~/.ssh/config` go stale after a migration.
+- Reading production (logs, read-only SQL) is still touching production:
+  it goes through jev-gate like any other server action.
 ```
 
 Почему так, а не иначе:
@@ -577,6 +588,7 @@ claude doctor                              # версия, автообновл�
 - **Heredoc ломает файлы.** Python- или sed-скрипт внутри bash heredoc портит `\n`, `\r` и кавычки. Это повторялось в трёх сессиях подряд. Многострочные правки — только через Write/Edit.
 - **Субагент Codex заблокирован** (например, «Create Unsafe Agents» от проверки разрешений). Правило: один повтор. Если снова блок — Opus просит вас запустить `/codex:review` в этой же сессии и сам читает результат. В реальном прогоне Opus после блока предложил ревью вам, а на «жди ревью» стал ждать от вас, хотя повтор сразу прошёл.
 - **Opus сам выбирает трактовку двусмысленной задачи.** Правило: если два прочтения ведут к разному коду — один короткий вопрос до проектирования. На вопрос без контекста («как это сгенерировать») — спросить, что такое «это», а не искать по репозиторию.
+- **Opus сам ходит на сервер с паролем из чата.** Правило: только вход по ключу, который вы уже настроили. Пароль из чата не использовать и ввод пароля не автоматизировать. Если ключ не подходит — Opus даёт команды вам. Адрес сервера перед работой сверять по DNS, а не по памяти: после переезда старые адреса и команды в памяти и в `~/.ssh/config` устаревают.
 - **Jev-gate на каждую правку файла.** Гейт нужен только для рискованных действий: удаления, `--force`, миграции продовой базы, всё, что касается сервера, и запись вне папки проекта. Обычные правки, тесты и линтер внутри проекта через гейт не гоняют. Команды, которые Opus даёт вам для запуска на сервере (например `sudo chown -R ...`), тоже рискованные, для них гейт нужен.
 - **Субагент, которого много раз дозапускают, раздувается.** В реальном прогоне агент тестов после 6 дозапусков дошёл до ≈506 тыс. токенов контекста, и каждый его шаг перечитывает весь этот объём. По правилу после ~150 тыс. нужен свежий агент с коротким брифом.
 - **Codex используется как peer, а не ревьюер.** Если случайно начать звать `/codex:rescue` вместо `/codex:review` — вы вернётесь к peer-схеме и потеряете смысл разделения ролей из этого документа.
