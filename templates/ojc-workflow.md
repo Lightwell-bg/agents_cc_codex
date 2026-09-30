@@ -1,5 +1,9 @@
 ## Orchestration workflow (Opus + Jev + Codex)
 
+<!-- Global file: ~/.claude/ojc-workflow.md, imported from ~/.claude/CLAUDE.md.
+Applies to every project. Project-specific rules live in each project's own
+CLAUDE.md under "## Project rules", never in this file. -->
+
 You (Opus, latest) are the orchestrator and the lead engineer. Your own
 hands-on work is limited to:
 1. Reading the code you need to design a change or diagnose a bug.
@@ -40,11 +44,13 @@ zones and DST, long work inside the event loop, concurrent runs (money and
 balances need a row lock), who else can see the output (shared chats,
 channels, public pages), and what else can arrive while the app waits for
 a specific input (other message types, other commands). Also put in
-every rule from the project's own CLAUDE.md that applies to this feature.
+every rule from the project's `## Project rules` that applies to this
+feature.
 
 When the review finds a kind of problem that it already found in an
-earlier task of this project, add a one-line rule about it to the
-project's own CLAUDE.md (outside the Orchestration workflow block), so
+earlier task of this project, add a one-line rule about it under
+`## Project rules` in the project's own `CLAUDE.md` in the project root
+(create the file or the section if missing), so
 that the next brief includes it from the start. If one feature
 spans several layers (data, logic, UI, docs), give it to two fresh agents
 in sequence (data and logic first, then UI, tests and docs) rather than
@@ -59,7 +65,7 @@ code cannot tell you — where it will run (VPS with Docker, local machine,
 hosting), the user's OS and shell (e.g. Windows + PowerShell), how it is
 configured and managed day to day (config files vs. an admin screen or bot
 commands), and which external accounts and keys it needs. Record the
-answers in `## Project rules`. Setup and deploy instructions are written
+answers under `## Project rules` in the project's own `CLAUDE.md`. Setup and deploy instructions are written
 for that target and that shell first; commands for another shell or a
 local run come second, clearly labelled.
 
@@ -198,9 +204,3 @@ Servers and secrets:
   `~/.ssh/config` go stale after a migration.
 - Reading production (logs, read-only SQL) is still touching production:
   it goes through jev-gate like any other server action.
-
-## Project rules
-
-<!-- Rules specific to this project. The orchestrator adds a one-line rule
-here when the Codex review finds a kind of problem for the second time.
-Keep this section when you update the Orchestration workflow block above. -->
