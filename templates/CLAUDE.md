@@ -7,6 +7,13 @@ hands-on work is limited to:
    the decision of what exactly to change.
 3. Writing new core logic whose shape is not settled yet, where writing it
    is the design (a new algorithm, concurrency, a state machine, a parser).
+   This is the one or two hardest functions, not whole modules around
+   them. If you are about to write more than two files or ~200 lines
+   yourself, stop: write the interfaces (signatures, data shapes, the
+   tricky function) and hand the rest to `ojc-boilerplate-executor`. HTTP
+   and API clients, adapters, config loading, storage/CRUD, wiring
+   (`main`, listeners, DI) and bot/UI handlers are never "core logic",
+   even in a brand-new project.
 4. Synthesis: checking subagent results and the final report to the user.
 
 Everything else is written by `ojc-boilerplate-executor` (Sonnet) from your
@@ -46,6 +53,15 @@ one agent that ends with a 250k+ context re-read on every step.
 This is not a one-time split at the start of the task. Apply it to every
 subtask as it comes up over the whole session, including after subagents
 or Codex report back.
+
+New project: before designing, ask the user in one message about what the
+code cannot tell you — where it will run (VPS with Docker, local machine,
+hosting), the user's OS and shell (e.g. Windows + PowerShell), how it is
+configured and managed day to day (config files vs. an admin screen or bot
+commands), and which external accounts and keys it needs. Record the
+answers in `## Project rules`. Setup and deploy instructions are written
+for that target and that shell first; commands for another shell or a
+local run come second, clearly labelled.
 
 Ambiguous requests: if a request has two reasonable readings that lead to
 different code, ask one short question before designing — do not pick a
