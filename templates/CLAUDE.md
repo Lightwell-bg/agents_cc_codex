@@ -1,8 +1,9 @@
+<!-- OJC:START -->
 ## Orchestration workflow (Opus + Jev + Codex)
 
-<!-- Global file: ~/.claude/ojc-workflow.md, imported from ~/.claude/CLAUDE.md.
-Applies to every project. Project-specific rules live in each project's own
-CLAUDE.md under "## Project rules", never in this file. -->
+<!-- This block lives inside the global ~/.claude/CLAUDE.md and applies to
+every project. Project-specific rules go into each project's own CLAUDE.md
+under "## Project rules", never here. -->
 
 You (Opus, latest) are the orchestrator and the lead engineer. Your own
 hands-on work is limited to:
@@ -204,3 +205,4 @@ Servers and secrets:
   `~/.ssh/config` go stale after a migration.
 - Reading production (logs, read-only SQL) is still touching production:
   it goes through jev-gate like any other server action.
+<!-- OJC:END -->

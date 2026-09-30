@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
   Removes an old per-project copy of the "## Orchestration workflow" block
-  from a project's CLAUDE.md, now that the workflow is loaded globally.
+  from a project's CLAUDE.md, now that the workflow lives in the global
+  ~/.claude/CLAUDE.md.
 
 .DESCRIPTION
   Keeps "## Project rules" and anything else in the file. If nothing but an
@@ -27,7 +28,7 @@ if (-not (Test-Path $target)) { Write-Host "No CLAUDE.md in $Project - nothing t
 
 $raw = [IO.File]::ReadAllText($target)
 $useCrlf = $raw.Contains($crlfStr)
-$p = $raw.Replace($crlfStr, $lf)
+$p = $raw.Replace($crlfStr, $lf).Replace("<!-- OJC:START -->", "").Replace("<!-- OJC:END -->", "")
 
 $blockHead = "## Orchestration workflow"
 $start = $p.IndexOf($blockHead, $ordinal)
