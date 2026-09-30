@@ -14,6 +14,20 @@
 
 ---
 
+## Быстро: что куда копировать
+
+Откуда — папка `templates` этого репозитория. Перед копированием: `git pull` в папке репозитория.
+
+| Что | Куда | Когда |
+|---|---|---|
+| `templates\CLAUDE.md` | В корень **каждого** проекта, имя `CLAUDE.md`. Корень проекта — папка, где вы запускаете Claude Code | Для каждого нового проекта и после каждого обновления схемы |
+| Всё из `templates\agents\` | `C:\Users\<вы>\.claude\agents\` | Один раз и когда эти файлы меняются |
+| `templates\scripts\jev-route.sh`, `jev-gate.sh`, `jev-route.ps1`, `jev-gate.ps1` | `C:\Users\<вы>\.claude\scripts\ojc\` | Один раз и когда эти файлы меняются |
+| Блок `"hooks"` из `templates\settings.json.example` | В `C:\Users\<вы>\.claude\settings.json`, после строки `"model": ...` | Один раз и когда меняется текст хука |
+| Ключ OpenRouter | Переменная среды Windows `OPENROUTER_API_KEY` (раздел 12.6) | Один раз |
+
+После копирования — перезапустить Claude Code в проекте.
+
 ## 1. Архитектура
 
 ```mermaid
