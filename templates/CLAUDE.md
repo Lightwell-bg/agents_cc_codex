@@ -174,6 +174,17 @@ Writing the review brief:
   `/codex:review` in this session and read its result yourself. "Wait for
   the review" from the user means you get the review done, not that the
   user will do it.
+- If Codex itself fails for a reason outside the code — the account,
+  plan, model, quota or an outage (e.g. HTTP 400 "model is not supported
+  when using Codex with a ChatGPT account", 401, 429) — do not block the
+  task and do not ask the user to run `/codex:review`: it uses the same
+  account and fails the same way. Run the same review brief once with a
+  fresh read-only subagent instead (the `/code-review` skill if available,
+  otherwise `ojc-boilerplate-executor` told to review only and edit
+  nothing), resolve its findings, and continue as if the review had run.
+  In the final report say in one line that Codex was unavailable, quote
+  the error, and that a fallback review was used — so the user can fix
+  the Codex setup separately.
 
 Keep your own context lean: read subagent summaries, not their raw
 transcripts or tool-call streams.

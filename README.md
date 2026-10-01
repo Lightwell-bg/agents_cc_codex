@@ -516,6 +516,17 @@ Writing the review brief:
   `/codex:review` in this session and read its result yourself. "Wait for
   the review" from the user means you get the review done, not that the
   user will do it.
+- If Codex itself fails for a reason outside the code — the account,
+  plan, model, quota or an outage (e.g. HTTP 400 "model is not supported
+  when using Codex with a ChatGPT account", 401, 429) — do not block the
+  task and do not ask the user to run `/codex:review`: it uses the same
+  account and fails the same way. Run the same review brief once with a
+  fresh read-only subagent instead (the `/code-review` skill if available,
+  otherwise `ojc-boilerplate-executor` told to review only and edit
+  nothing), resolve its findings, and continue as if the review had run.
+  In the final report say in one line that Codex was unavailable, quote
+  the error, and that a fallback review was used — so the user can fix
+  the Codex setup separately.
 
 Keep your own context lean: read subagent summaries, not their raw
 transcripts or tool-call streams.
@@ -624,6 +635,7 @@ claude doctor                              # версия, автообновл�
 - **Ревью Codex зависает.** Обычно из-за того, что ревьюер сам запускает тесты. В брифе: только чтение (`git diff`, файлы), без тестов. Если за ~10 минут результата нет — смотреть сырой вывод задачи и перезапускать с более узким брифом, а не ждать и не пропускать ревью.
 - **Бриф ревью сужен до пары вопросов.** Тогда Codex не смотрит остальное. В реальном прогоне так пропустили коллизию callback-префиксов. Область ревью — весь diff задачи, особые пункты только дополняют её.
 - **Heredoc ломает файлы.** Python- или sed-скрипт внутри bash heredoc портит `\n`, `\r` и кавычки. Это повторялось в трёх сессиях подряд. Многострочные правки — только через Write/Edit.
+- **Codex сломан на уровне аккаунта** (например, ошибка 400 «model is not supported when using Codex with a ChatGPT account»). Работа не должна из-за этого вставать. Правило: Opus не ждёт и не просит вас запускать `/codex:review` (он упадёт так же), а делает то же ревью свежим субагентом Claude только на чтение, закрывает замечания, выдаёт команды и в отчёте пишет, что Codex был недоступен, с текстом ошибки. Чинить сам Codex — отдельно: проверить вход (`codex login`) и модель в `C:\Users\<вы>\.codex\config.toml`.
 - **Субагент Codex заблокирован** (например, «Create Unsafe Agents» от проверки разрешений). Правило: один повтор. Если снова блок — Opus просит вас запустить `/codex:review` в этой же сессии и сам читает результат. В реальном прогоне Opus после блока предложил ревью вам, а на «жди ревью» стал ждать от вас, хотя повтор сразу прошёл.
 - **Opus сам выбирает трактовку двусмысленной задачи.** Правило: если два прочтения ведут к разному коду — один короткий вопрос до проектирования. На вопрос без контекста («как это сгенерировать») — спросить, что такое «это», а не искать по репозиторию.
 - **Opus сам ходит на сервер с паролем из чата.** Правило: только вход по ключу, который вы уже настроили. Пароль из чата не использовать и ввод пароля не автоматизировать. Если ключ не подходит — Opus даёт команды вам. Адрес сервера перед работой сверять по DNS, а не по памяти: после переезда старые адреса и команды в памяти и в `~/.ssh/config` устаревают.
