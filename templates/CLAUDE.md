@@ -39,8 +39,19 @@ run: untrusted input going into files or markup (CSV/HTML injection), time
 zones and DST, long work inside the event loop, concurrent runs (money and
 balances need a row lock), who else can see the output (shared chats,
 channels, public pages), and what else can arrive while the app waits for
-a specific input (other message types, other commands). Also put in
-every rule from `## Project rules` below that applies to this feature.
+a specific input (other message types, other commands). Also:
+- anything with a side effect (sending a message, charging, spending a
+  credit) must be idempotent against double taps, retries, restarts and a
+  second process: an atomic claim in the database before the side effect;
+  a timeout means "maybe done", never an automatic resend;
+- a button or link in an old message carries the identity of the state it
+  acts on (id + revision or a nonce), and the write checks it atomically,
+  so a stale message cannot change the current state;
+- provider events (payment webhooks, subscription callbacks) are matched
+  by the provider's object id and are not trusted to arrive in order:
+  read the live object from the provider before changing state.
+Also put in every rule from `## Project rules` below that applies to this
+feature.
 
 When the review finds a kind of problem that it already found in an
 earlier task of this project, add a one-line rule about it under
