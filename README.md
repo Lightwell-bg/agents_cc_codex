@@ -471,13 +471,9 @@ $new = [IO.File]::ReadAllText((Resolve-Path "templates\CLAUDE.md").Path)
 $old = [IO.File]::ReadAllText($proj)
 $i = $old.IndexOf("`n## Project rules")
 $j = $new.IndexOf("`n## Project rules")
-if ($i -lt 0) { Write-Host "В файле проекта нет '## Project rules' - файл не изменён" -ForegroundColor Red }
-else {
-  Copy-Item $proj "$proj.bak" -Force
-  [IO.File]::WriteAllText($proj, $new.Substring(0, $j + 1) + $old.Substring($i + 1), (New-Object Text.UTF8Encoding $false))
-  Get-Content $proj -Encoding UTF8 | Select-Object -Last 8
-}
+if ($i -lt 0 -or $j -lt 0) { Write-Host "Нет '## Project rules' - файл не изменён" -ForegroundColor Red } else { Copy-Item $proj "$proj.bak" -Force; [IO.File]::WriteAllText($proj, $new.Substring(0, $j + 1) + $old.Substring($i + 1), (New-Object Text.UTF8Encoding $false)); Get-Content $proj -Encoding UTF8 | Select-Object -Last 8 }
 ```
+Последняя команда (`if ... else ...`) должна быть одной строкой: если вставлять её в консоль по частям, PowerShell выполнит `if` отдельно и выдаст ошибку `Имя "else" не распознано`.
 Проверка: в конце вывода видны ваши строки из `## Project rules`. Рядом осталась копия старого файла `CLAUDE.md.bak` — когда убедитесь, что всё на месте, удалите её. Если вывелась красная строка, значит у проекта очень старый `CLAUDE.md` без этого раздела: скопируйте файл командой для нового проекта.
 
 **Сабагенты и скрипты Jev — один раз на компьютер** (и повторно, когда они меняются):
