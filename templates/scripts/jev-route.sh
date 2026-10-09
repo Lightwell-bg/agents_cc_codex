@@ -68,8 +68,8 @@ print(json.dumps({
             "instructions": "Which executor fits this subtask?",
             "criteria": {
                 "opus-self": "Design, architecture, diagnosing a non-obvious bug, new core logic whose design is not settled yet",
-                "ojc-boilerplate-executor": "Implementing an already-diagnosed fix or a change following an existing pattern; tests, docs, formatting, running builds/tests/linters",
-                "ojc-quick-helper": "Trivial, cheap lookup or one-line edit",
+                "ojc-boilerplate-executor": "Implementing an already-diagnosed fix or a change following an existing pattern; writing tests and docs, formatting; fixing what a test or lint run reported",
+                "ojc-quick-helper": "Running tests, lint or a build without fixing anything and reporting a short verdict; code search; trivial lookup or one-line edit",
             },
         }
     },

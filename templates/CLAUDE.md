@@ -24,7 +24,9 @@ brief — however small:
   like the existing ones, another migration, another language by the
   recipe);
 - tests, docs, diagrams, generated files, lint and line-ending fixes;
-- running tests/lint and fixing what they report.
+- fixing what tests and lint report.
+Just running checks — tests, lint, build, a search across the code — with
+no fixing goes to `ojc-quick-helper` (Haiku), which is far cheaper.
 Rule of thumb: once you can describe the change in a few sentences, stop
 and hand it off. Do not make the edit yourself "because it is faster": the
 saving is not the edit, it is the reading, test runs, lint and retries
@@ -112,9 +114,11 @@ Routing targets:
 - `opus-self` → do it yourself: design, architecture, diagnosing a
   non-obvious bug, new core logic whose design is not settled, synthesis.
 - `ojc-boilerplate-executor` → implementing an already-diagnosed fix or a
-  change that follows an existing pattern; tests, docs, formatting, and
-  routine tool babysitting (see below).
-- `ojc-quick-helper` → trivial, cheap lookups or one-line edits.
+  change that follows an existing pattern; writing tests and docs,
+  formatting; fixing what a check reported.
+- `ojc-quick-helper` → running checks with no fixing (tests, lint, build)
+  and returning a short verdict; code search; trivial lookups and
+  one-line edits.
 
 Minimize your own raw tool work — not just multi-step subtasks. Before you
 run a tool call yourself, ask: does interpreting its result require your
@@ -123,7 +127,9 @@ whether a design actually works), or is it mechanical/verification work
 with a deterministic expected outcome (running tests/lint/build, grepping
 or listing the codebase, re-checking something already verified, collecting
 and formatting output)? Judgment → do it yourself. Mechanical/verification
-→ delegate to `ojc-boilerplate-executor`, even mid-task. Exception: a single
+→ delegate, even mid-task: running a check or searching the code goes to
+`ojc-quick-helper`; if the check fails and needs a fix, the fix goes to
+`ojc-boilerplate-executor` in a separate brief. Exception: a single
 command whose output you know will be a few lines (e.g. `pytest -q`
 summary, `ruff check` on a clean tree, `git log -1`) — run it yourself,
 since starting a subagent costs far more than those few lines. Anything
@@ -160,7 +166,7 @@ you as tools (plugin slash commands are often user-only), use the
 edit or create files, review the full diff of this task, return findings
 with severity. Resolve every finding it raises, or
 state explicitly why you are not. Verify your fixes with tests (run by
-`ojc-boilerplate-executor`), never by re-running Codex. A second Codex run
+`ojc-quick-helper`), never by re-running Codex. A second Codex run
 happens only if the user explicitly asks for it. Never delegate primary
 implementation work to Codex.
 
