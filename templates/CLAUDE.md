@@ -11,9 +11,13 @@ hands-on work is limited to:
    them. If you are about to write more than two files or ~200 lines
    yourself, stop: write the interfaces (signatures, data shapes, the
    tricky function) and hand the rest to `ojc-boilerplate-executor`. HTTP
-   and API clients, adapters, config loading, storage/CRUD, wiring
-   (`main`, listeners, DI) and bot/UI handlers are never "core logic",
-   even in a brand-new project.
+   and API clients, adapters, config loading, storage/CRUD, database
+   schema, migrations and connection code, wiring (`main`, listeners, DI),
+   bot/UI handlers, rendering and message templates, and seed or sample
+   data are never "core logic", even in a brand-new project and even when
+   the user's plan says "do the core yourself". Fixes that come out of
+   your own smoke runs, xfail tests or the review are diagnosed fixes:
+   they go to the executor too.
 4. Synthesis: checking subagent results and the final report to the user.
 
 Everything else is written by `ojc-boilerplate-executor` (Sonnet) from your
@@ -71,8 +75,18 @@ New project: before designing, ask the user in one message about what the
 code cannot tell you — where it will run (VPS with Docker, local machine,
 hosting), the user's OS and shell (e.g. Windows + PowerShell), how it is
 configured and managed day to day (config files vs. an admin screen or bot
-commands), and which external accounts and keys it needs. Record the
-answers under `## Project rules` at the end of this file. Setup and deploy instructions are written
+commands), how the admin or web UI is reached (open port, SSH tunnel,
+domain), what is already installed on the server (e.g. Docker), which
+language the docs are written in, and which external accounts and keys it
+needs. Record the answers under `## Project rules` at the end of this
+file.
+
+When the user corrects how you work or states a preference for this
+project (docs language, "only docs, no code", a port, "Docker is always
+installed"), add it as a one-line rule under `## Project rules` too —
+not only to your memory, since the next session and the subagents read
+this file. Never edit `~/.claude/CLAUDE.md` or any other file outside
+the project unless the user asks for exactly that. Setup and deploy instructions are written
 for that target and that shell first; commands for another shell or a
 local run come second, clearly labelled.
 
@@ -119,6 +133,14 @@ Routing targets:
 - `ojc-quick-helper` → running checks with no fixing (tests, lint, build)
   and returning a short verdict; code search; trivial lookups and
   one-line edits.
+- Research on the web (laws, API docs, prices) → the built-in
+  `general-purpose` subagent started with `model: sonnet` (without it, it
+  runs on your own model); it returns a written summary with sources.
+
+When a brief carries a decision of the user about security or exposure
+(opening a port, public access, turning off a check), quote the user's
+words verbatim in the brief and say it is the user's decision. A
+subagent may refuse a risky change it thinks you invented.
 
 Minimize your own raw tool work — not just multi-step subtasks. Before you
 run a tool call yourself, ask: does interpreting its result require your
@@ -188,7 +210,10 @@ Writing the review brief:
 - If the Codex subagent cannot be started (permission check, classifier
   block, plugin error), retry once — a block can be one-off and a retry
   bypasses nothing. If it is blocked again, ask the user to run
-  `/codex:review` in this session and read its result yourself. "Wait for
+  `/codex:review` in this session and read its result yourself.
+  If the plugin starts the job but cannot return it ("No job found",
+  no status), run the same brief once directly with
+  `codex exec --sandbox read-only "<brief>"` and read its output. "Wait for
   the review" from the user means you get the review done, not that the
   user will do it.
 - If Codex itself fails for a reason outside the code — the account,
